@@ -24,6 +24,9 @@ Player = {
 	-- cards in play 
 	in_play = {};
 
+	race = nil,
+	class = nil,
+
 	-- base stats which may be modified by items, race, or class
 	max_in_play = 5;
 	free_hands = 2;
@@ -74,15 +77,41 @@ Player = {
 				end
 			end
 		end
-
-		table.insert(self.in_play, card)
 	end;
 
-	equip_item = function(self, item)
-			end;
+	grant_levels = function(self, n)
+		self.level = self.level + n
+	end;
+
+	on_combat_kill = function(self, game, monster)
+		for card in self.in_play do
+			if card.on_combat_kill then card.on_combat_kill(game, self) end
+		end
+
+		if game.active_player == self then
+			self:grant_levels(monster.levels)
+		end
+	end;
+
+	gather_bonus = function(self, name)
+		local sum = 0
+		for card in self.in_play do
+			if card.bonuses and card.bonuses[name] then
+				sum = sum + card.bonuses[name]
+			end
+		end
+		return sum
+	end;
+
+	die = function(self)
+		-- nil everything in this object, equivalent to 
+		-- setting everything back to defaults (because they 
+		-- are stored on the metatable)
+		for k in pairs(self) do
+			self[k] = nil
+		end
+	end;
 }
-
-
 
 local races = {
 	dwarf = {
@@ -115,7 +144,6 @@ local classes = {
 				phases = "runaway";
 				can_use = function(game)
 					if game.phase == "runaway" then return true end
-					return false
 				end;
 				bonuses = {
 					run_away = function(player)
@@ -139,45 +167,120 @@ local classes = {
 					player:grant_treasure(monster.treasure)
 					game:remove_from_combat(monster)
 				end;
-			}
+			};
 		};
 	};
 }
 
+Card = {
+	name = "** unnamed card **";
+	desc = "** undescribed card **";
+	type = "** untyped card **";
+}
+Card.__index = Card
+Card.__call = function(self, tbl) return self:new(tbl) end
 
+Monster = {
+	-- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
+	good = "** missing Good Stuff text **";
+	bad  = "** missing Bad Stuff text **";
+	treasures = 0;
+
+	calc_strength = function(self)
+		error("encountered monster card '"..self.name.."' with unimplemented 'calc_strength' function.", 2)
+	end;
+
+	on_victory = function(self)
+		error("encountered monster card '"..self.name.."' with unimplemeneted 'on_victory' function.", 2)
+	end;
+
+	add_enhancer = function(self, x)
+		table.insert(self.enhancers, x)
+	end;
+
+	calc_enhancer_effect = function(self)
+		local sum = 0
+		for enhancer in self.enhancers do
+			sum = sum + enhancer.effect
+		end
+		return sum
+	end;
+
+	new = function(_, tbl)
+		local o = {}
+		for k,v in pairs(tbl) do
+			o[k] = v
+		end
+		o.type = "monster"
+		o.enhancers = {}
+		setmetatable(o, Monster)
+	end
+}
+Monster.__index = Monster
+setmetatable(Monster, Card)
+
+MonsterEnhancer = {
+	new = function(_, tbl)
+		local o = {}
+		for k,v in pairs(tbl) do
+			o[k] = v
+		end
+		o.type = "enhancer"
+		setmetatable(o, MonsterEnhancer)
+	end
+}
+MonsterEnhancer.__index = MonsterEnhancer
+setmetatable(MonsterEnhancer, Card)
+
+Item = {
+	value = -1;
+
+	-- overridable function items may use 
+	-- to put restrictions on what can use them
+	can_play = function(self) return true end;
+}
+Item.__index = Item
+setmetatable(Item, Card)
 
 local door_deck = {
-	{
+	Monster {
 		name = "3,872 Orcs";
-		type = "monster";
 		good = "If this enemy is defeated, the Player gains 1 level and 3 treasures.";
 		bad  = "Due to ancient grudges, the 3,872 Orcs are level 16 (+6) against Dwarves. If this enemy is victorious, the Player must roll a die. On a 1 or 2, the 3,872 Orcs stomp the Player to death. On a 3 or higher, the Player loses however many Levels the die shows.";
 		treasures = 3;
 
-		-- calculates this monsters strength against the given player
-		calc_strength = function(player)
+		calc_strength = function(self, player)
+			local sum = 10
 			if player.race == "dwarf" then
-				return 16
+				sum = sum + 6
+			end
+			return sum + self:calc_enhancer_effect()
+		end;
+
+		on_victory = function(self, game, player, helpers)
+			local effect = function(x)
+				local roll = x:roll_die()
+				if roll <= 2 then
+					x:die()
+				else
+					x:lose_levels(roll)
+				end
 			end
 
-			return 10
-		end;
-
-		on_defeat = function(game, player)
-			
-		end;
-
-		battle = function(engaged_players)
-			local strenth = 16
-
-			local sum = 0
-
-			for player in engaged_players do
-				sum = sum + player:calc_combat_strength()
-
+			effect(player)
+			for helper in helpers do
+				effect(helper)
 			end
 		end;
-	}
+	};
+	MonsterEnhancer  {
+		name = "Baby";
+		desc = "-5 to monster. Play during combat. If the monster is defeated, draw 1 fewer Treasure.";
+		can_play = function(game)
+			if game.phase == "combat" then return true end
+		end;
+		effect = -5;
+	};
 }
 
 local treasure_deck = {
@@ -215,7 +318,8 @@ local treasure_deck = {
 		type = "item";
 		slot = "headgear";
 		value = 400;
+		class = classes.wizard;
 
-		class = "wizard"
+		bonuses = { combat = 3 };
 	}
 }
