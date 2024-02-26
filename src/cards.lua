@@ -34,6 +34,12 @@ Player = {
 	max_big_items = 1;
 
 	play_card = function(self, card)
+		-- check if the card itself has any restrictions on
+		-- who can play it
+		if not card:can_play(self) then
+			return false
+		end
+
 		if card.type == "item" then
 			if card.slot == "one hand" then
 				if self.free_hands ~= 0 then
@@ -96,8 +102,8 @@ Player = {
 	gather_bonus = function(self, name)
 		local sum = 0
 		for card in self.in_play do
-			if card.bonuses and card.bonuses[name] then
-				sum = sum + card.bonuses[name]
+			if card.bonuses then
+				sum = sum + (card.bonuses[name] or 0)
 			end
 		end
 		return sum
@@ -176,6 +182,10 @@ Card = {
 	name = "** unnamed card **";
 	desc = "** undescribed card **";
 	type = "** untyped card **";
+
+	-- overridable function items may use 
+	-- to put restrictions on what can use them
+	can_play = function(self, player) return true end;
 }
 Card.__index = Card
 Card.__call = function(self, tbl) return self:new(tbl) end
@@ -227,6 +237,7 @@ MonsterEnhancer = {
 		end
 		o.type = "enhancer"
 		setmetatable(o, MonsterEnhancer)
+		return o
 	end
 }
 MonsterEnhancer.__index = MonsterEnhancer
@@ -235,9 +246,16 @@ setmetatable(MonsterEnhancer, Card)
 Item = {
 	value = -1;
 
-	-- overridable function items may use 
-	-- to put restrictions on what can use them
-	can_play = function(self) return true end;
+
+	new = function(_, tbl)
+		local o = {}
+		for k,v in pairs(tbl) do
+			o[k] = v
+		end
+		o.type = "item"
+		setmetatable(o, Item)
+		return o
+	end
 }
 Item.__index = Item
 setmetatable(Item, Card)
@@ -273,7 +291,7 @@ local door_deck = {
 			end
 		end;
 	};
-	MonsterEnhancer  {
+	MonsterEnhancer {
 		name = "Baby";
 		desc = "-5 to monster. Play during combat. If the monster is defeated, draw 1 fewer Treasure.";
 		can_play = function(game)
@@ -281,20 +299,18 @@ local door_deck = {
 		end;
 		effect = -5;
 	};
+	races.elf,
 }
 
 local treasure_deck = {
-	{
+	Item {
 		name = "Tuba of Charm";
-		type = "item";
 		slot = "one hand";
 		big = true;
 		value = 300;
 		desc = "This melodious instrument captivates your foes, giving you +3 to Run Away. If you successfully escape combat, snag a face-down Treasure on your way out.";
 
-		bonuses = {
-			run_away = 3;
-		};
+		bonuses = { run_away = 3 };
 
 		actions = {
 			on_run_away = function(player, successful)
@@ -304,16 +320,15 @@ local treasure_deck = {
 			end
 		}
 	};
-	{
+	Item {
 		name = "Huge Rock";
-		type = "item";
 		slot = "two hands";
 		big = true;
 		value = 0;
 
 		bonuses = { combat = 3 };
 	};
-	{
+	Item {
 		name = "Pointy Hat of Power";
 		type = "item";
 		slot = "headgear";
@@ -321,5 +336,5 @@ local treasure_deck = {
 		class = classes.wizard;
 
 		bonuses = { combat = 3 };
-	}
+	};
 }
