@@ -44,11 +44,11 @@ else ifeq (${mode},release)
 	compiler_flags += -O2
 endif
 
-linker_flags := \
-	-Llib       \
-	-lluajit    \
-	-lraylib    \
-	-lm         \
+linker_flags :=  \
+	-Llib          \
+	-lluajit_linux \
+	-lraylib_linux \
+	-lm            \
 	-Wl,--export-dynamic
 
 # print a success message
