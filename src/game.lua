@@ -9,6 +9,7 @@ local log = function(...)
 end
 
 local cards = require "cards"
+local raylib = require "raylib";
 
 -- primary game state table
 local game = {}
@@ -50,3 +51,9 @@ update = function(self)
 
 end
 
+game.
+draw = function(self)
+	raylib.DrawFPS(0, 0);
+end
+
+return game;
