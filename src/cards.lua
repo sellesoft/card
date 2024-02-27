@@ -1,126 +1,67 @@
--- [[
+-- 
+-- 
+-- Card definitions
+-- These should eventually be hot-reloadable somehow, but for now 
+-- I'm just going to implement them statically. 
 --
---     Card definitions
---     These should eventually be hot-reloadable somehow, but for now 
---     I'm just going to implement them statically. 
+-- The game is, at the moment, designed so that cards actually control
+-- much of the logic. 
 --
---     The game is, at the moment, designed so that cards actually control
---     much of the logic. The game offers up players which play cards.
 --
--- ]]
 
-PlayerStats = {
-	max_in_play = 5;
-	max_big_items = 1;
+local Player = require "player"
+
+-- base card type, contains defaults when 
+-- deriving types don't implement basic data/functionality
+local Card = {
+	name = "** unnamed card **";
+	desc = "** undescribed card **";
+	type = "** untyped card **";
+
+	-- overridable function items may use 
+	-- to put restrictions on what can use them.
+	-- by default a card can be played at any time.
+	can_play = function(self, player) return true end;
+
+	-- various 'bonuses' this card gives. All cards alter
+	-- the behavior of the player via this table!
+	bonuses = {
+		-- added to a player's combat value
+		combat = nil;
+
+		-- added to a player's run away roll
+		run_away = nil;
+	};
+
+	-- various callbacks queried throughout the game
+	actions = {
+		
+	};
 }
+Card.__index = Card
+-- setup __call to redirect to the 'new' function that 
+-- children of this type implement. This allows us to 
+-- write something like 
+-- Race {...}
+-- rather than 
+-- Race.new {...}
+Card.__call = function(self, tbl) return self:new(tbl) end
 
+local Race = { type = "race" }
+Race.__index = Race
+setmetatable(Race, Card)
 
--- player 'class' which serves as the metatable of 
--- player objects. This allows us to override the players
--- functionality by setting any of the following members
--- on the object. The original functionality can be restored
--- by simply setting the overriding member to nil.
-Player = {
-	-- cards in play 
-	in_play = {};
-
-	race = nil,
-	class = nil,
-
-	-- base stats which may be modified by items, race, or class
-	max_in_play = 5;
-	free_hands = 2;
-	big_items = 0;
-	max_big_items = 1;
-
-	play_card = function(self, card)
-		-- check if the card itself has any restrictions on
-		-- who can play it
-		if not card:can_play(self) then
-			return false
-		end
-
-		if card.type == "item" then
-			if card.slot == "one hand" then
-				if self.free_hands ~= 0 then
-					if card.big then
-						if self.big_items < self.max_big_items then
-							self.big_items = self.big_items + 1
-							table.insert(self.in_play, card)
-							return true
-						end
-					else
-						table.insert(self.in_play, card)
-						self.free_hands = self.free_hands - 1
-						return true
-					end
-				end
-			elseif card.slot == "two hands" then
-				if self.free_hands == 2 then
-					if card.big then
-						if self.big_items == 0 then
-							self:play_card(card)
-							table.insert(self.in_play, card)
-							return true
-						end
-					else
-						table.insert(self.in_play, card)
-						self.free_hands = 0
-						return true
-					end
-				end
-			elseif card.slot == "headgear" then
-				if not self.headgear then
-					self.headgear = card
-					table.insert(self.in_play, card)
-					return true
-				end
-			elseif card.slot == "armor" then
-				if not self.armor then
-					self.armor = card
-					table.insert(self.in_play, card)
-					return true
-				end
-			end
-		end
-	end;
-
-	grant_levels = function(self, n)
-		self.level = self.level + n
-	end;
-
-	on_combat_kill = function(self, game, monster)
-		for card in self.in_play do
-			if card.on_combat_kill then card.on_combat_kill(game, self) end
-		end
-
-		if game.active_player == self then
-			self:grant_levels(monster.levels)
-		end
-	end;
-
-	gather_bonus = function(self, name)
-		local sum = 0
-		for card in self.in_play do
-			if card.bonuses then
-				sum = sum + (card.bonuses[name] or 0)
-			end
-		end
-		return sum
-	end;
-
-	die = function(self)
-		-- nil everything in this object, equivalent to 
-		-- setting everything back to defaults (because they 
-		-- are stored on the metatable)
-		for k in pairs(self) do
-			self[k] = nil
-		end
-	end;
-}
+Race.
+new = function(_, tbl)
+	local o = {}
+	for k,v in pairs(tbl) do
+		o[k] = v
+	end
+	setmetatable(o, Race)
+end
 
 local races = {
-	dwarf = {
+	dwarf = Race {
 		name = "Dwarf";
 		desc = "You can carry any number of Big items. You can have 6 cards in your hand.";
 		bonuses = {
@@ -128,7 +69,7 @@ local races = {
 			max_in_play = 1;
 		};
 	};
-	elf = {
+	elf = Race {
 		name = "Elf";
 		desc = "+1 to Run Away. You go up 1 Level for every monster you help someone else kill.";
 		bonuses = { run_away = 1; };
@@ -140,8 +81,24 @@ local races = {
 	};
 }
 
+local Class = {
+	type = "class";
+	abilities = {};
+}
+Class.__index = Class
+setmetatable(Class, Card)
+
+Class.
+new = function(_, tbl)
+	local o = {}
+	for k,v in pairs(tbl) do
+		o[k] = v
+	end
+	setmetatable(o, Class)
+end
+
 local classes = {
-	wizard = {
+	wizard = Class {
 		name = "Wizard";
 		abilities = {
 			{
@@ -149,7 +106,7 @@ local classes = {
 				desc = "You may discard up to three cards after rolling the die to Run Away; each one gives you a +1 bonus to flee.";
 				phases = "runaway";
 				can_use = function(game)
-					if game.phase == "runaway" then return true end
+					if game.phase == "run_away" then return true end
 				end;
 				bonuses = {
 					run_away = function(player)
@@ -178,87 +135,93 @@ local classes = {
 	};
 }
 
-Card = {
-	name = "** unnamed card **";
-	desc = "** undescribed card **";
-	type = "** untyped card **";
+local Monster = {
+	type = "monster";
 
-	-- overridable function items may use 
-	-- to put restrictions on what can use them
-	can_play = function(self, player) return true end;
-}
-Card.__index = Card
-Card.__call = function(self, tbl) return self:new(tbl) end
-
-Monster = {
 	-- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
 	good = "** missing Good Stuff text **";
 	bad  = "** missing Bad Stuff text **";
 	treasures = 0;
 
-	calc_strength = function(self)
-		error("encountered monster card '"..self.name.."' with unimplemented 'calc_strength' function.", 2)
-	end;
+	-- calc this monster's strength based on the given player
+	-- this must be overridden by implementations of Monster
+	calc_strength = function(self, game, player) error("encountered monster card '"..self.name.."' with unimplemented 'calc_strength' function.") end;
 
-	on_victory = function(self)
-		error("encountered monster card '"..self.name.."' with unimplemeneted 'on_victory' function.", 2)
-	end;
-
-	add_enhancer = function(self, x)
-		table.insert(self.enhancers, x)
-	end;
-
-	calc_enhancer_effect = function(self)
-		local sum = 0
-		for enhancer in self.enhancers do
-			sum = sum + enhancer.effect
-		end
-		return sum
-	end;
-
-	new = function(_, tbl)
-		local o = {}
-		for k,v in pairs(tbl) do
-			o[k] = v
-		end
-		o.type = "monster"
-		o.enhancers = {}
-		setmetatable(o, Monster)
-	end
+	-- behavior upon victory of this monster. 'player' is the primary 
+	-- player that was first engaged with the monster (eg. the one that 
+	-- kicked down the door or summoned it) and 'helpers' are players 
+	-- that decided to help. 
+	-- this must be overridden by implementations of Monster
+	on_victory = function(self, game, player, helpers) error("encountered monster card '"..self.name.."' with unimplemeneted 'on_victory' function.") end;
 }
 Monster.__index = Monster
 setmetatable(Monster, Card)
 
-MonsterEnhancer = {
-	new = function(_, tbl)
-		local o = {}
-		for k,v in pairs(tbl) do
-			o[k] = v
-		end
-		o.type = "enhancer"
-		setmetatable(o, MonsterEnhancer)
-		return o
+Monster.
+new = function(_, tbl)
+	local o = {}
+	for k,v in pairs(tbl) do
+		o[k] = v
 	end
+	o.enhancers = {}
+	setmetatable(o, Monster)
+end
+
+-- add a monster enhancer card to this 
+-- monster object
+Monster.
+add_enhancer = function(self, x)
+	table.insert(self.enhancers, x)
+end
+
+-- calculate the total effect monster enhancers 
+-- have on this monster
+Monster.
+calc_enhancer_effect = function(self)
+	local sum = 0
+	for _,enhancer in ipairs(self.enhancers) do
+		sum = sum + enhancer.effect
+	end
+	return sum
+end
+
+local MonsterEnhancer = {
+	type = "enhancer";
+	effect = 0;
+
+	-- all monster enhancers can only be played
+	-- during combat
+	can_play = function(self, game) return game.phase == "combat" end;
 }
 MonsterEnhancer.__index = MonsterEnhancer
 setmetatable(MonsterEnhancer, Card)
 
-Item = {
-	value = -1;
-
-
-	new = function(_, tbl)
-		local o = {}
-		for k,v in pairs(tbl) do
-			o[k] = v
-		end
-		o.type = "item"
-		setmetatable(o, Item)
-		return o
+MonsterEnhancer.
+new = function(_, tbl)
+	local o = {}
+	for k,v in pairs(tbl) do
+		o[k] = v
 	end
+	setmetatable(o, MonsterEnhancer)
+	return o
+end
+
+local Item = {
+	type = "item";
+	value = -1;
 }
 Item.__index = Item
 setmetatable(Item, Card)
+
+Item.
+new = function(_, tbl)
+	local o = {}
+	for k,v in pairs(tbl) do
+		o[k] = v
+	end
+	setmetatable(o, Item)
+	return o
+end
 
 local door_deck = {
 	Monster {
