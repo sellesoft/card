@@ -9,6 +9,7 @@ local monitor_height = raylib.GetMonitorHeight(monitor);
 raylib.SetWindowSize(monitor_width/2, monitor_height/2);
 raylib.SetWindowPosition(monitor_width/4, monitor_height/4);
 raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(monitor));
+raylib.SetConfigFlags(raylib.FLAG_WINDOW_RESIZABLE)
 
 game:init(2);
 

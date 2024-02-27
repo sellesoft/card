@@ -65,23 +65,36 @@ local animations = {
 
 		init = function(self)
 			local text = "Turn Start"
-			local time = 0;
+			local t = 0;
 			local text_width = raylib.MeasureText(text, 20)
 
-			local out = co.create(function()
-				dbg()
+			return co.create(function()
 				local x
-				while true do
-					log("animation")
-					time = time + raylib.GetFrameTime()
-					x = map_linear_range(0, self.slide_in_time, 0, (text_width - raylib.GetRenderWidth) / 2, time)
+				while t < self.slide_in_time do
+					t = t + raylib.GetFrameTime()
+					x = map_linear_range(0, self.slide_in_time, 0, (raylib.GetScreenWidth() - text_width) / 2, t)
 
-					raylib.DrawText(text, x, 0, 11, raylib.WHITE)
+					raylib.DrawText(text, x, 80, 20, raylib.WHITE)
+					co.yield()
+				end
+
+				t = 0
+
+				while t < self.still_time do
+					t = t + raylib.GetFrameTime()
+					raylib.DrawText(text, x, 80, 20, raylib.WHITE)
+					co.yield()
+				end
+
+				t = 0
+
+				while t < self.slide_out_time do
+					t = t + raylib.GetFrameTime()
+					x = map_linear_range(0, self.slide_out_time, (raylib.GetScreenWidth() - text_width) / 2, raylib.GetScreenWidth(), t)
+					raylib.DrawText(text, x, 80, 20, raylib.WHITE)
 					co.yield()
 				end
 			end)
-			dbg()
-			return out
 		end
 	}
 }
@@ -95,15 +108,13 @@ end
 local update_coroutine = co.create(function(self)
 	::turn_start::
 	do
-		log("--( turn start )--")
+		-- log("--( turn start )--")
 		self.current_animation = animations.turn_start:init()
-		dbg()
 		wait_for_animations(self)
 
 		-- get the active player 
 		local active_player = self.players[#self.players % self.turn + 1]
 	end
-
 	goto turn_start
 end)
 
@@ -125,8 +136,11 @@ draw = function(self)
 	raylib.DrawFPS(0, 0);
 
 	if self.current_animation then
-		local not_done = co.resume(self.current_animation)
-		if not not_done then
+		local all_good, message = co.resume(self.current_animation)
+		if not all_good then
+			-- TODO(sushi) not always an error, wrap lua's coroutine logic in stuff that
+			--             automatically handles coroutines ending
+			log("coroutine error: "..message)
 			self.current_animation = nil
 		end
 	end
