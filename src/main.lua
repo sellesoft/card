@@ -2,9 +2,15 @@ package.path = package.path .. ";src/?.lua"
 local game = require "game";
 local raylib = require "raylib";
 
+raylib.InitWindow(600, 600, "card");
+local monitor = raylib.GetCurrentMonitor();
+local monitor_width = raylib.GetMonitorWidth(monitor);
+local monitor_height = raylib.GetMonitorHeight(monitor);
+raylib.SetWindowSize(monitor_width/2, monitor_height/2);
+raylib.SetWindowPosition(monitor_width/4, monitor_height/4);
+raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(monitor));
+
 game:init(2);
-raylib.InitWindow(800, 800, "card");
-raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(0));
 
 while not raylib.WindowShouldClose() do
 	game:update();
