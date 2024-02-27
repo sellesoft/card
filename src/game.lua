@@ -1,20 +1,18 @@
--- [[
+-- 
 --
---    Primary game loop and logic and such
+-- Primary game loop and logic and such
 --
--- ]]
+-- 
+local cards = require "cards"
+local raylib = require "raylib";
+local raygui = require "raygui";
+local Player = require "player"
+local dbg = require "debugger"
+local co = require "coroutine"
 
 local log = function(...)
 	io.write("game: ", ..., "\n")
 end
-
-local co = require "coroutine"
-
-local cards = require "cards"
-local Player = require "player"
-local raylib = require "raylib";
-
-local dbg = require "debugger"
 
 -- primary game state table
 local game = {}
