@@ -6,7 +6,7 @@ game:init(2);
 raylib.InitWindow(800, 800, "card");
 raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(0));
 
-while raylib.WindowShouldClose() == 0 do
+while not raylib.WindowShouldClose() do
 	game:update();
 	raylib.BeginDrawing();
 	raylib.ClearBackground(raylib.BLACK);
