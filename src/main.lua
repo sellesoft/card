@@ -10,14 +10,14 @@ raylib.SetWindowSize(monitor_width/2, monitor_height/2);
 raylib.SetWindowPosition(monitor_width/4, monitor_height/4);
 raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(monitor));
 raylib.SetConfigFlags(raylib.FLAG_WINDOW_RESIZABLE)
+raylib.SetExitKey(raylib.KEY_NULL);
 
-game:init(2);
+game:init();
 
 while not raylib.WindowShouldClose() do
-	game:update();
 	raylib.BeginDrawing();
 	raylib.ClearBackground(raylib.BLACK);
-	game:draw();
+	game:update();
 	raylib.EndDrawing();
 end
 
