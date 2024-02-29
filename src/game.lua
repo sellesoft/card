@@ -12,7 +12,7 @@ local raylib = require "raylib";
 local raygui = require "raygui";
 
 -- primary game state table
-local game = {};
+local game = {}; --TODO split into server and client state
 
 local Menu = {
 	Main = 0,
@@ -130,50 +130,120 @@ local update_coroutine = co.create(function(self)
 	goto turn_start
 end)
 
+local draw_main_menu = function()
+	local title_height = game.window_height / 4;
+	raygui.GuiSetStyle(raygui.DEFAULT, raygui.TEXT_SIZE, title_height);
+	raygui.GuiLabel({10, 0, game.window_width, title_height}, "Munchkin");
+	
+	local button_width = math.max(game.window_width / 4, 60);
+	local button_height = math.max(20, game.window_height / 16);
+	local button_y_offset = game.window_height / 3;
+	raygui.GuiSetStyle(raygui.DEFAULT, raygui.TEXT_SIZE, button_height);
+	
+	local play_button_rect = {10, button_y_offset, button_width, button_height};
+	if raygui.GuiLabelButton(play_button_rect, "Play") ~= 0 then
+		game.menu = Menu.Play;
+	end
+	
+	button_y_offset = button_y_offset + button_height;
+	game.player_count_ptr = game.player_count_ptr or ffi.new("int[1]", 2);
+	local text_width = raylib.MeasureText("Players", button_height);
+	local players_spinner_rect = {10 + text_width, button_y_offset, button_width - text_width, button_height};
+	raygui.GuiSetStyle(raygui.SPINNER, raygui.TEXT_PADDING, 10);
+	if raygui.GuiSpinner(players_spinner_rect, "Players", game.player_count_ptr, 2, 12, false) ~= 0 then
+		game.player_count = game.player_count_ptr[0];
+	end
+	
+	button_y_offset = button_y_offset + button_height;
+	local quit_button_rect = {10, button_y_offset, button_width, button_height};
+	if raygui.GuiLabelButton(quit_button_rect, "Quit") ~= 0 then
+		raylib.CloseWindow();
+	end
+end
+
+--TODO replace this with an image
+local draw_card_face = function(card, x, y)
+	-- border
+	local card_border = math.max(1, math.floor(game.card_width / 32));
+	local border_color = raylib.ColorToInt(raylib.DARKBROWN);
+	raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, border_color);
+	raygui.GuiPanel({x, y, game.card_width, game.card_height}, nil);
+	
+	-- background
+	if card.group == "door" then
+		raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, raylib.ColorToInt({255, 241, 228, 255}));
+		raygui.GuiPanel({x + card_border, y + card_border, game.card_width - 2*card_border, game.card_height - 2*card_border}, nil);
+	elseif card.group == "treasure" then
+		raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, raylib.ColorToInt({250, 205, 150, 255}));
+		raygui.GuiPanel({x + card_border, y + card_border, game.card_width - 2*card_border, game.card_height - 2*card_border}, nil);
+	end
+	
+	-- TODO other
+end
+
+
+--TODO replace this with an image
+local draw_card_back = function(card, x, y)
+	-- border
+	local card_border = math.max(1, math.floor(game.card_width / 32));
+	local border_color = raylib.ColorToInt(raylib.DARKBROWN);
+	raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, border_color);
+	raygui.GuiPanel({x, y, game.card_width, game.card_height}, nil);
+	
+	-- background
+	if card.group == "door" then
+		raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, raylib.ColorToInt({211, 182, 160, 255}));
+		raygui.GuiPanel({x + card_border, y + card_border, game.card_width - 2*card_border, game.card_height - 2*card_border}, nil);
+	elseif card.group == "treasure" then
+		raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, raylib.ColorToInt({149, 108, 72, 255}));
+		raygui.GuiPanel({x + card_border, y + card_border, game.card_width - 2*card_border, game.card_height - 2*card_border}, nil);
+	end
+end
+
+local draw_card_deck = function(name, cards, x, y)
+	local card_count = cards and #cards or 0;
+	if card_count == 0 then
+		
+	else
+		draw_card_back(cards[1], x, y);
+		if card_count > 1 then
+			draw_card_back(cards[1], x+2, y+2);
+		end
+		if card_count > 2 then
+			draw_card_back(cards[1], x+4, y+4);
+		end
+	end
+end
+
+local draw_static_cards = function()
+	draw_card_deck("Door Deck", game.door_deck);
+	draw_card_deck("Treasure Deck", game.treasure_deck);
+	-- draw_card_deck("Discard Deck", game.door_deck);
+end
+
 game.
 update = function(self)
 	-- log(" --- ** update start ** ---")
-	--raylib.DrawFPS(0, 0);
-	
-	local window_width = raylib.GetScreenWidth();
-	local window_height = raylib.GetScreenHeight();
+	game.window_width = raylib.GetScreenWidth();
+	game.window_height = raylib.GetScreenHeight();
+	game.card_height = game.window_height / 4;
+	game.card_width = game.card_height / 1.4;
 	
 	if self.menu == Menu.Main then
-		local title_height = window_height / 4;
-		raygui.GuiSetStyle(raygui.DEFAULT, raygui.TEXT_SIZE, title_height);
-		raygui.GuiLabel({10, 0, window_width, title_height}, "Munchkin");
-		
-		local button_width = math.max(window_width / 4, 60);
-		local button_height = math.max(20, window_height / 16);
-		local button_y_offset = window_height / 3;
-		raygui.GuiSetStyle(raygui.DEFAULT, raygui.TEXT_SIZE, button_height);
-		
-		local play_button_rect = {10, button_y_offset, button_width, button_height};
-		if raygui.GuiLabelButton(play_button_rect, "Play") ~= 0 then
-			self.menu = Menu.Play;
-		end
-		
-		button_y_offset = button_y_offset + button_height;
-		self.player_count_ptr = self.player_count_ptr or ffi.new("int[1]", 2);
-		local text_width = raylib.MeasureText("Players", button_height);
-		local players_spinner_rect = {10 + text_width, button_y_offset, button_width - text_width, button_height};
-		raygui.GuiSetStyle(raygui.SPINNER, raygui.TEXT_PADDING, 10);
-		if raygui.GuiSpinner(players_spinner_rect, "Players", self.player_count_ptr, 2, 12, false) ~= 0 then
-			self.player_count = self.player_count_ptr[0];
-		end
-		
-		button_y_offset = button_y_offset + button_height;
-		local quit_button_rect = {10, button_y_offset, button_width, button_height};
-		if raygui.GuiLabelButton(quit_button_rect, "Quit") ~= 0 then
-			raylib.CloseWindow();
-			return;
-		end
+		draw_main_menu();
 	elseif self.menu == Menu.Play then
+		-- game update
 		local all_good, message = co.resume(update_coroutine, self)
 		if not all_good then
 			log("coroutine error: "..message)
 		end
 		
+		-- draw all static cards (not being animated)
+		--draw_static_cards();
+		draw_card_back({group="door"},  50, 50);
+		draw_card_back({group="treasure"}, 250, 50);
+		
+		-- draw the ongoing animation on top of static cards
 		if self.current_animation then
 			local all_good, message = co.resume(self.current_animation)
 			if not all_good then

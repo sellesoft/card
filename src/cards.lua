@@ -17,6 +17,7 @@ local Card = {
 	name = "** unnamed card **";
 	desc = "** undescribed card **";
 	type = "** untyped card **";
+	group = "** ungrouped card **";
 
 	-- overridable function items may use 
 	-- to put restrictions on what can use them.
@@ -47,7 +48,7 @@ Card.__index = Card
 -- Race.new {...}
 Card.__call = function(self, tbl) return self:new(tbl) end
 
-local Race = { type = "race" }
+local Race = { type = "race"; group = "door"; }
 Race.__index = Race
 setmetatable(Race, Card)
 
@@ -83,6 +84,7 @@ local races = {
 
 local Class = {
 	type = "class";
+	group = "door";
 	abilities = {};
 }
 Class.__index = Class
@@ -137,6 +139,7 @@ local classes = {
 
 local Monster = {
 	type = "monster";
+	group = "door";
 
 	-- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
 	good = "** missing Good Stuff text **";
@@ -187,6 +190,7 @@ end
 
 local MonsterEnhancer = {
 	type = "enhancer";
+	group = "treasure";
 	effect = 0;
 
 	-- all monster enhancers can only be played
@@ -208,6 +212,7 @@ end
 
 local Item = {
 	type = "item";
+	group = "treasure";
 	value = -1;
 }
 Item.__index = Item

@@ -1,4 +1,5 @@
 #include "raylib.h"
+#define RAYGUI_PANEL_BORDER_WIDTH 0
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
