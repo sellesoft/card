@@ -2,8 +2,6 @@ package.path = package.path .. ";src/?.lua"
 local game = require "game";
 local raylib = require "raylib";
 
-local traverse = require "luatraverse"
-
 raylib.SetTraceLogLevel(raylib.LOG_ERROR)
 raylib.InitWindow(600, 600, "card");
 local monitor = raylib.GetCurrentMonitor();
