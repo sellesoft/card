@@ -2,6 +2,9 @@ package.path = package.path .. ";src/?.lua"
 local game = require "game";
 local raylib = require "raylib";
 
+local traverse = require "luatraverse"
+
+raylib.SetTraceLogLevel(raylib.LOG_ERROR)
 raylib.InitWindow(600, 600, "card");
 local monitor = raylib.GetCurrentMonitor();
 local monitor_width = raylib.GetMonitorWidth(monitor);
@@ -17,7 +20,9 @@ game:init();
 while not raylib.WindowShouldClose() do
 	raylib.BeginDrawing();
 	raylib.ClearBackground(raylib.BLACK);
-	game:update();
+	if not game:update() then
+		break
+	end
 	raylib.EndDrawing();
 end
 

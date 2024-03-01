@@ -5,11 +5,16 @@
 -- I'm just going to implement them statically. 
 --
 -- The game is, at the moment, designed so that cards actually control
--- much of the logic. 
+-- much of the logic. In fact all of the logic involving the interactions
+-- of cards and players should stay contained in this file for now so 
+-- that its clear where it all is.
 --
 --
 
 local Player = require "player"
+
+-- output table
+local cards = {}
 
 -- base card type, contains defaults when 
 -- deriving types don't implement basic data/functionality
@@ -228,7 +233,8 @@ new = function(_, tbl)
 	return o
 end
 
-local door_deck = {
+cards.
+door_deck = {
 	Monster {
 		name = "3,872 Orcs";
 		good = "If this enemy is defeated, the Player gains 1 level and 3 treasures.";
@@ -270,7 +276,8 @@ local door_deck = {
 	races.elf,
 }
 
-local treasure_deck = {
+cards.
+treasure_deck = {
 	Item {
 		name = "Tuba of Charm";
 		slot = "one hand";
@@ -306,3 +313,5 @@ local treasure_deck = {
 		bonuses = { combat = 3 };
 	};
 }
+
+return cards
