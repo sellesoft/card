@@ -38,11 +38,6 @@ end
 -- primary game state table
 local game = {}; --TODO split into server and client state
 
--- arbitrary data 
--- used in various places 
--- till i organize better later
-game.data = {}
-
 local Menu = {
 	Main = 0,
 	Play = 1,
@@ -70,10 +65,11 @@ end
 -- <<                                                                               >>
 
 
-
 game.
 init = function(self)
+	self.type = "game";
 	self.menu = Menu.Main;
+	self.data = {}
 	self.settings = {};
 	self.settings.player_count = 2;
 end
