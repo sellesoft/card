@@ -38,11 +38,6 @@ end
 -- primary game state table
 local game = {}; --TODO split into server and client state
 
--- arbitrary data 
--- used in various places 
--- till i organize better later
-game.data = {}
-
 local Menu = {
 	Main = 0,
 	Play = 1,
@@ -70,41 +65,52 @@ end
 -- <<                                                                               >>
 
 
-
 game.
 init = function(self)
+	self.type = "game";
 	self.menu = Menu.Main;
-	self.player_count = 2;
+	self.data = {}
+	self.settings = {};
+	self.settings.player_count = 2;
 end
 
 game.
 start = function(self)
+	math.randomseed(os.time());
 	game.update_coroutine = co.create(game.update_coroutine_definition)
 
 	-- turn counter
 	self.turn = 0
 	-- phase counter, which are discrete parts of a turn
-	self.phase = 0
-
-	log("creating ", self.player_count, " players")
+	self.phase = ""; -- pre_door -> loot_room | (combat -> run_away | defeat | victory_solo | victory_shared) -> charity
 
 	-- create each player table
 	self.players = {}
-	for _=1,self.player_count do
+	for _=1,self.settings.player_count do
 		local o = {}
 		setmetatable(o, Player)
 		table.insert(self.players, o)
 	end
-
-	log("loading door and treasure decks")
-
-	self.door_deck = cards.treasure_deck
-	self.treasure_deck = cards.door_deck
-
+	self.active_player = math.random(self.settings.player_count);
+	log("created ", #self.players, " players");
+	
+	-- create door, treasure, and discard decks
+	self.door_deck = cards:new_deck("group", "door");
+	self.door_discard = {};
+	self.treasure_deck = cards:new_deck("group", "treasure");
+	self.treasure_discard = {};
+	log("created a door deck with ", #self.door_deck, " cards");
+	log("created a treasure deck with ", #self.treasure_deck, " cards");
+	
 	-- set of cards that have been 'played' in this phase
 	self.field = {
-		-- set of monsters active in combat
+		-- set of monsters and their enhancers active in combat
 		monsters = {};
+		monster_enhancers = {};
+		
+		-- set of players and their enhancers active in combat
+		players = {};
+		player_enhancers = {};
 	}
 
 	self.current_animation = nil
@@ -355,7 +361,7 @@ main_menu = function()
 
 		ui.set_raystyle("spinner", "text_padding", 10)
 		if raygui.GuiSpinner(ui.rect(button_w-text_w, button_h), "Players", game.player_count_ptr, 2, 12, false) ~= 0 then
-			game.player_count = game.player_count_ptr[0]
+			game.settings.player_count = game.player_count_ptr[0]
 		end
 
 		ui.dx(-text_w)
@@ -432,7 +438,8 @@ ui.
 static_cards = function()
 	ui.card_deck("Door Deck", game.door_deck);
 	ui.card_deck("Treasure Deck", game.treasure_deck);
-	-- draw_card_deck("Discard Deck", game.door_deck);
+	-- draw_card_deck("Door Discard Deck", game.door_discard);
+	-- draw_card_deck("Treasure Discard Deck", game.treasure_discard);
 end;
 
 -- draws the 'field' which are cards that are in play 
