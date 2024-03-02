@@ -9,6 +9,7 @@ local Player = {
 	in_hand = {};
 	in_play = {};
 	
+	level = 1;
 	race = nil;
 	race2 = nil;
 	class = nil;

@@ -2,7 +2,7 @@
 -- 
 -- Card Types and Utils
 -- These should eventually be hot-reloadable somehow, but for now 
--- Im just going to implement them statically.
+-- I'm just going to implement them statically.
 --
 -- The game is, at the moment, designed so that cards actually control
 -- much of the logic. In fact all of the logic involving the interactions
@@ -130,7 +130,7 @@ cards.cards.races = {
 		desc = "You can carry any number of Big items. You can have 6 cards in your hand.";
 		deck_count = 3;
 		play = function(self, game, player, args)
-			player.max_big_items = 1000; -- arbitrarily large number since we dont have inf
+			player.max_big_items = 1000; -- arbitrarily large number since we don't have inf
 			player.max_in_play = 6;
 		end;
 		discard = function(self, game, player, args)
@@ -211,11 +211,11 @@ cards.cards.classes = {
 				desc = "When it is time for you to draw cards face-up, you may instead take some or all from the top of the appropriate discard pile. You must then discard one card from your hand for each card drawn.";
 				can_use = function(self, game, player, args)
 					if game.active_player == player then
-						if game.phase == "draw_door_faceup" then
+						if game.phase == "pre_door" then
 							if #game.door_discard > 0 then
 								return true;
 							end
-						elseif game.phase == "draw_treasure_faceup" then
+						elseif game.phase == "victory_shared" then
 							if #game.treasure_discard > 0 then
 								return true;
 							end
@@ -225,9 +225,9 @@ cards.cards.classes = {
 				end;
 				use = function(self, game, player, args)
 					local drawn = {};
-					if game.phase == "draw_door_faceup" then
+					if game.phase == "pre_door" then
 						drawn = player:draw_cards(game.door_discard, true, 1, #game.door_discard);
-					elseif game.phase == "draw_treasure_faceup" then
+					elseif game.phase == "victory_shared" then
 						drawn = player:draw_cards(game.treasure_discard, true, 1, #game.treasure_discard);
 					end
 					
@@ -326,7 +326,7 @@ cards.cards.classes = {
 				desc = "You may discard a card to try to steal a small Item carried by another player. Roll a die; 4 or more succeeds. Otherwise, you get whacked and lose a level.";
 				can_use = function(self, game, player, args)
 					if not player.in_combat and player:has_discardables(game) then
-						for _,noncombatant in pair(game.players) do
+						for _,noncombatant in pairs(game.players) do
 							if noncombatant ~= player and not noncombatant.in_combat and noncombatant:find_inplay_item(function(card) return not card.big; end) then
 								return true;
 							end
@@ -415,7 +415,7 @@ cards.cards.classes = {
 			};
 			{
 				name = "Charm Spell";
-				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but dont gain levels. If there are other monsters in the combat, fight them normally.";
+				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but don't gain levels. If there are other monsters in the combat, fight them normally.";
 				can_use = function(self, game, player, args)
 					return player.in_combat and #player.in_hand >= 3;
 				end;
@@ -519,7 +519,7 @@ cards.cards.monsters = {
 				if combatant.class then
 					combatant.class = nil;
 					combatant.class2 = nil;
-					combatant:discard_inplay_card_by_name(game, "Super Munchkin");
+					combatant:discard_first_inplay_card(game, function(card) return card.anem == "Super Munchkin"; end);
 				else
 					combatant:lose_levels(3);
 				end
@@ -622,7 +622,11 @@ cards.cards.items = {
 local GOAL = {
 	kind = "goal";
 	group = "treasure";
+	desc = "";
 	
+	can_play = function(self, game, player, args)
+		return player.level < 9;
+	end;
 	play = function(self, game, player, args)
 		player:give_level(1);
 		player:discard_inhand_card(game, self);
@@ -634,7 +638,61 @@ GOAL.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end
 
 
 cards.cards.goals = {
-	-- TODO goals
+	GOAL { name = "1,000 Gold Pieces"; };
+	
+	GOAL { name = "Boil an Anthill"; };
+	
+	GOAL { name = "Bribe GM With Food"; };
+	
+	GOAL { name = "Convenient Addition Error"; };
+	
+	GOAL { name = "Invoke Obscure Rules"; };
+	
+	GOAL { name = "Kill the Hireling";
+		desc = "You can use this card only if a Hireling is in play (no matter who owns him). Discard the Hireling.";
+		can_play = function(self, game, player, args)
+			if player.level < 9 then
+				for _,p in pairs(game.players) do
+					for _,card in pairs(p.in_play) do
+						if card.name == "Hireling" then
+							return true;
+						end
+					end
+				end
+			end
+			return false;
+		end;
+		play = function(self, game, player, args)
+			::redo_hireling_player_selection::
+			local players = player:select_targets(game.players, true, 1, 1);
+			if #players > 0 then
+				local hirelings = player:select_targets(players[0].in_play, true, 1, 1, function(card) return card.name == "Hireling"; end);
+				if #hirelings > 0 then
+					player:give_level(1);
+					player:discard_inhand_card(game, self);
+					players[0]:discard_inplay_card(game, hirelings[0]);
+				else
+					goto redo_hireling_player_selection;
+				end
+			end
+		end;
+	};
+	
+	GOAL { name = "Mutilate the Bodies";
+		desc = "This card can be played only after combat, but it does not have to be your combat.";
+		can_play = function(self, game, player, args)
+			return game.phase == "run_away" or game.phase == "defeat" or game.phase == "victory_solo" or game.phase == "victory_shared";
+		end;
+	};
+	
+	GOAL { name = "Potion of General Studliness"; };
+	
+	GOAL { name = "Whine at the GM";
+		desc = "YOu can't use this if you are currently the highest-Level player, or tied for highest.";
+		can_play = function(self, game, player, args)
+			return game.phase == "run_away" or game.phase == "defeat" or game.phase == "victory_solo" or game.phase == "victory_shared";
+		end;
+	};
 };
 
 
@@ -673,27 +731,27 @@ Player.play_card = function(self, game, card, target)
 	end
 	
 	card:play(game, self, target);
-	cards.move_card(self.in_hand, self.in_play, card.name);
+	cards.move_card(self.in_hand, self.in_play, card);
 end
 
 -- returns true if the card was discarded
-Player.discard_inplay_card = function(self, game, name)
-	return cards.discard_table_card(game, self.in_play, name);
+Player.discard_inplay_card = function(self, game, card)
+	return cards.discard_table_card(game, self.in_play, card);
 end
 
 -- returns true if the card was discarded
-Player.discard_inhand_card = function(self, game, name)
-	return cards.discard_table_card(game, self.in_hand, name);
+Player.discard_inhand_card = function(self, game, card)
+	return cards.discard_table_card(game, self.in_hand, card);
 end
 
--- returns true if the card was discarded
-Player.discard_inplay_card_by_name = function(self, game, name)
-	return cards.discard_table_card_by_name(game, self.in_play, name);
+-- returns true if a card was discarded
+Player.discard_first_inplay_card = function(self, game, filter)
+	return cards.discard_first_table_card(game, self.in_play, filter);
 end
 
--- returns true if the card was discarded
-Player.discard_inhand_card_by_name = function(self, game, name)
-	return cards.discard_table_card_by_name(game, self.in_hand, name);
+-- returns true if a card was discarded
+Player.discard_first_inhand_card = function(self, game, filter)
+	return cards.discard_first_table_card(game, self.in_hand, filter);
 end
 
 -- returns true if the card was discarded
@@ -774,8 +832,8 @@ Player.roll_die = function(self)
 	return math.random(1,6);
 end
 
--- finds a player's in play card that passes the filter function
-Player.find_inplay_card = function(self, filter)
+-- returns the player's first in play card that passes the filter function
+Player.find_first_inplay_card = function(self, filter)
 	for _,card in pairs(self.in_play) do
 		if filter(card) then
 			return card;
@@ -784,8 +842,8 @@ Player.find_inplay_card = function(self, filter)
 	return nil;
 end
 
--- finds a player's in hand card that passes the filter function
-Player.find_inhand_card = function(self, filter)
+-- returns the player's first in hand card that passes the filter function
+Player.find_first_inhand_card = function(self, filter)
 	for _,card in pairs(self.in_hand) do
 		if filter(card) then
 			return card;
@@ -794,8 +852,8 @@ Player.find_inhand_card = function(self, filter)
 	return nil;
 end
 
--- finds a player's card that passes the filter function
-Player.find_card = function(self, filter)
+-- returns the player's first card that passes the filter function
+Player.find_first_card = function(self, filter)
 	for _,card in pairs(self.in_play) do
 		if filter(card) then
 			return card;
@@ -819,7 +877,7 @@ end
 
 -- returns the index of card in the tbl
 cards.find_card = function(tbl, card)
-	for idx,tbl_card in iparis(tbl) do
+	for idx,tbl_card in ipairs(tbl) do
 		if card == tbl_card then
 			return idx;
 		end
@@ -827,10 +885,10 @@ cards.find_card = function(tbl, card)
 	return nil;
 end
 
--- returns the index of the first card with name in the tbl
-cards.find_card_by_name = function(tbl, name)
-	for idx,tbl_card in iparis(tbl) do
-		if tbl_card.name == name then
+-- returns the index of the first card in the tbl that passes the filter function
+cards.find_first_card = function(tbl, filter)
+	for idx,tbl_card in ipairs(tbl) do
+		if filter(tbl_card) then
 			return idx;
 		end
 	end
@@ -846,9 +904,27 @@ cards.remove_card = function(tbl, card)
 	return nil;
 end
 
+-- returns and removes the first card in the tbl that passes the filter function
+cards.remove_first_card = function(tbl, filter)
+	idx = cards.find_first_card(tbl, filter);
+	if idx then
+		return table.remove(tbl, idx);
+	end
+	return nil;
+end
+
 -- moves card from the src_tbl to the dst_tbl
 cards.move_card = function(src_tbl, dst_tbl, card)
 	removed_card = cards.remove_card(src_tbl, card);
+	if removed_card then
+		table.insert(dst_tbl, removed_card);
+	end
+	return removed_card ~= nil;
+end
+
+-- moves the first card in the src_tbl that passes the filter function to the dst_tbl
+cards.move_first_card = function(src_tbl, dst_tbl, filter)
+	removed_card = cards.remove_first_card(src_tbl, filter);
 	if removed_card then
 		table.insert(dst_tbl, removed_card);
 	end
@@ -868,9 +944,9 @@ cards.discard_table_card = function(game, tbl, card)
 	end
 end
 
--- returns true if the card was discarded
-cards.discard_table_card_by_name = function(game, tbl, name)
-	card = cards.find_card_by_name(tbl, name);
+-- returns true if a card was discarded
+cards.discard_first_table_card = function(game, tbl, filter)
+	card = cards.find_first_card(tbl, filter);
 	return card and cards.discard_table_card(game, tbl, card);
 end
 

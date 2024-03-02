@@ -82,7 +82,7 @@ start = function(self)
 	-- turn counter
 	self.turn = 0
 	-- phase counter, which are discrete parts of a turn
-	self.phase = ""; -- combat, run_away
+	self.phase = ""; -- pre_door -> loot_room | (combat -> run_away | defeat | victory_solo | victory_shared) -> charity
 
 	-- create each player table
 	self.players = {}
