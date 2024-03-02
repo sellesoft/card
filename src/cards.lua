@@ -402,12 +402,13 @@ local Curse = {
 	group = "treasure";
 }
 Curse.__index = Curse;
-setmetatable(GOAL, Card);
+setmetatable(Curse, Card);
 Curse.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Curse); return o; end
 
 cards.
 curses = {
 	
 };
+
 
 return cards;
