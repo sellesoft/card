@@ -4,83 +4,126 @@
 -- Each player uses this as its metatable. It contains defaults for 
 -- various functionality and values.
 -- 
+local log = require("logger").register_module("game")
+
 
 local Player = {
-	-- cards in play 
+	in_hand = {};
 	in_play = {};
-
+	
+	in_combat = nil;
+	turn_owner = nil;
+	
 	race = nil;
+	race2 = nil;
 	class = nil;
-
+	class2 = nil;
+	gender = nil;
+	
 	-- base stats which may be modified by items, race, or class
 	max_in_play = 5;
 	free_hands = 2;
 	big_items = 0;
 	max_big_items = 1;
 }
-Player.__index = Player
+Player.__index = Player;
 
--- central function for putting cards 'in play'. 
+-- plays the 'card' on the 'target' from 'self' player's hand.
 -- returns false if the given card cannot be played.
 Player.
-play_card = function(self, card)
-	-- check if the card itself has any restrictions on
-	-- who can play it
-	if not card:can_play(self) then
-		return false
-	end
-
-	if card.type == "item" then
-		if card.slot == "one hand" then
-			if self.free_hands ~= 0 then
-				if card.big then
-					if self.big_items < self.max_big_items then
-						self.big_items = self.big_items + 1
-						table.insert(self.in_play, card)
-						return true
-					end
-				else
-					table.insert(self.in_play, card)
-					self.free_hands = self.free_hands - 1
-					return true
-				end
+play_card = function(self, card, target)
+	if card.type == "race" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "class" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "monster" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "enhancer" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "item" then
+		if target ~= self then
+			return false; -- can only play item cards on self
+		end
+		if self.in_combat and not card.can_be_played_in_combat then
+			return false; -- can't play item cards in combat
+		end
+		if card.big and self.big_items >= self.max_big_items then
+			return false;
+		end
+		
+		if card.slot == "one_hand" then
+			if self.free_hands < 1 then
+				return false;
 			end
-		elseif card.slot == "two hands" then
-			if self.free_hands == 2 then
-				if card.big then
-					if self.big_items == 0 then
-						self:play_card(card)
-						table.insert(self.in_play, card)
-						return true
-					end
-				else
-					table.insert(self.in_play, card)
-					self.free_hands = 0
-					return true
-				end
+			
+			self.free_hands = self.free_hands - 1;
+		elseif card.slot == "two_hands" then
+			if self.free_hands < 2 then
+				return false;
 			end
+			
+			self.free_hands = self.free_hands - 2;
 		elseif card.slot == "headgear" then
 			if not self.headgear then
-				self.headgear = card
-				table.insert(self.in_play, card)
-				return true
+				return false;
 			end
+			
+			self.headgear = card;
 		elseif card.slot == "armor" then
-			if not self.armor then
-				self.armor = card
-				table.insert(self.in_play, card)
-				return true
+			if self.armor then
+				return false;
 			end
+			
+			self.armor = card;
 		end
+		
+		if card.big then
+			self.big_items = self.big_items + 1;
+		end
+	elseif card.type == "goal" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "curse" then
+		log:error("not implemented yet");
+		return false;
 	end
+	
+	cards.move_card(self.in_hand, self.in_play, card);
+	return true;
 end
 
--- central, currently useless, level granting function
--- incase we ever decide it needs to perform more 
--- logic generically.
+-- TODO how to access game.discard piles?
+local discard_card = function(player, src, name)
+	log:error("not implemented yet");
+	return false;
+end
+
+-- returns true if the player was able to discard the card
+Player.
+discard_inplay_card = function(self, name)
+	log:error("not implemented yet");
+	return false;
+end
+
+-- returns true if the player was able to discard the card
+Player.
+discard_inhand_card = function(self, name)
+	log:error("not implemented yet");
+	return false;
+end
+
 Player.
 grant_levels = function(self, n)
-	self.level = self.level + n
+	self.level = self.level + n;
+end
+
+Player.
+lose_levels = function(self, n)
+	self.level = math.max(self.level - n, 1);
 end
 
 -- called when this player kills 'monster'
@@ -91,7 +134,7 @@ on_combat_kill = function(self, game, monster)
 	end
 
 	if game.active_player == self then
-		self:grant_levels(monster.levels)
+		self:grant_levels(monster.levels);
 	end
 end
 
@@ -102,21 +145,21 @@ end
 -- a number.
 Player.
 gather_bonus = function(self, name)
-	local sum = 0
+	local sum = 0;
 	for card in self.in_play do
-		local bonus = card.bonuses[name]
-		local bonus_type = type(bonus)
+		local bonus = card.bonuses[name];
+		local bonus_type = type(bonus);
 		if bonus then
 			if "function" == bonus_type then
-				sum = sum + bonus(self)
+				sum = sum + bonus(self);
 			elseif "number" == bonus_type then
-				sum = sum + bonus
+				sum = sum + bonus;
 			else
-				error("encountered card with a '"..name.."' bonus that is neither a function or a number!")
+				error("encountered card with a '"..name.."' bonus that is neither a function or a number!");
 			end
 		end
 	end
-	return sum
+	return sum;
 end
 
 -- called when this player dies.
@@ -126,7 +169,7 @@ die = function(self)
 	-- setting everything back to defaults (because they 
 	-- are stored on the metatable)
 	for k in pairs(self) do
-		self[k] = nil
+		self[k] = nil;
 	end
 end
 
