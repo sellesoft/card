@@ -99,7 +99,9 @@ start = function(self)
 	log("loading door and treasure decks")
 
 	self.door_deck = cards.treasure_deck
+	self.door_discard = {};
 	self.treasure_deck = cards.door_deck
+	self.treasure_discard = {};
 
 	-- set of cards that have been 'played' in this phase
 	self.field = {
@@ -432,7 +434,8 @@ ui.
 static_cards = function()
 	ui.card_deck("Door Deck", game.door_deck);
 	ui.card_deck("Treasure Deck", game.treasure_deck);
-	-- draw_card_deck("Discard Deck", game.door_deck);
+	-- draw_card_deck("Door Discard Deck", game.door_discard);
+	-- draw_card_deck("Treasure Discard Deck", game.treasure_discard);
 end;
 
 -- draws the 'field' which are cards that are in play 

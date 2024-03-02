@@ -1,8 +1,8 @@
 -- 
 -- 
--- Card definitions
+-- Card Types and Utils
 -- These should eventually be hot-reloadable somehow, but for now 
--- I'm just going to implement them statically. 
+-- I'm just going to implement them statically.
 --
 -- The game is, at the moment, designed so that cards actually control
 -- much of the logic. In fact all of the logic involving the interactions
@@ -11,6 +11,7 @@
 --
 --
 local Player = require "player";
+local log = require("logger").register_module("cards");
 local cards = {};
 
 
@@ -52,8 +53,7 @@ Card.__call = function(self, tbl) return self:new(tbl) end
 
 -- removes the first card with 'name' in the 'src' table
 -- returns the card that was removed
-cards.
-remove_card = function(src, name)
+local remove_card = function(src, name)
 	for idx,card in iparis(src) do
 		if card.name == name then
 			return table.remove(src, idx);
@@ -63,12 +63,12 @@ remove_card = function(src, name)
 end
 
 -- moves the first card with 'name' from the 'src' table to the 'dst' table
-cards.
-move_card = function(src, dst, name)
-	card = cards.remove_card(src, name);
+local move_card = function(src, dst, name)
+	card = remove_card(src, name);
 	if card then
 		table.insert(dst, card);
 	end
+	return card ~= nil;
 end
 
 
@@ -104,10 +104,12 @@ races = {
 		bonuses = { run_away = 1; };
 		on_combat_kill = function(game, player)
 			if game.active_player ~= player then
-				player:grant_levels(1);
+				player:give_levels(1);
 			end
 		end;
 	};
+	
+	-- TODO races
 }
 
 
@@ -132,8 +134,7 @@ classes = {
 	wizard = Class {
 		name = "Wizard";
 		abilities = {
-			{
-				name = "Flight Spell";
+			{ name = "Flight Spell";
 				desc = "You may discard up to three cards after rolling the die to Run Away; each one gives you a +1 bonus to flee.";
 				phases = "runaway";
 				can_use = function(game)
@@ -145,8 +146,7 @@ classes = {
 					end;
 				};
 			};
-			{
-				name = "Charm Spell";
+			{ name = "Charm Spell";
 				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but don't gain levels. If there are other monsters in the combat, fight them normally.";
 				phases = "combat";
 				can_use = function(game, player)
@@ -158,12 +158,14 @@ classes = {
 				action = function(game, player)
 					player:discard_hand();
 					local monster = player:choose_monster(game);
-					player:grant_treasure(monster.treasure);
+					player:draw_treasure(monster.treasure);
 					game:remove_from_combat(monster);
 				end;
 			};
 		};
 	};
+	
+	-- TODO classes
 }
 
 
@@ -182,6 +184,7 @@ local Monster = {
 	good = "** missing Good Stuff text **";
 	bad  = "** missing Bad Stuff text **";
 	treasures = 0;
+	levels = 1;
 	enhancers = {};
 
 	-- calc this monster's strength based on the given player
@@ -228,7 +231,7 @@ monsters = {
 		bad  = "Due to ancient grudges, the 3,872 Orcs are level 16 (+6) against Dwarves. If this enemy is victorious, the Player must roll a die. On a 1 or 2, the 3,872 Orcs stomp the Player to death. On a 3 or higher, the Player loses however many Levels the die shows.";
 		treasures = 3;
 
-		calc_strength = function(self, player)
+		calc_strength = function(self, game, player)
 			if player.race == "dwarf" then
 				return 16 + self:calc_enhancer_effect();
 			else
@@ -258,7 +261,7 @@ monsters = {
 		bad = "If this enemy is victorious, the male Player has been defeated by a woman, therefore losing his macho munchkin pride. The Player also loses his Class(es). However, if the Player has no Class, he loses 3 Levels instead.";
 		treasures = 2;
 		
-		calc_strength = function(self, player)
+		calc_strength = function(self, game, player)
 			return 8 + self:calc_enhancer_effect();
 		end;
 		
@@ -281,6 +284,8 @@ monsters = {
 			end
 		end;
 	};
+	
+	-- TODO monsters
 }
 
 
@@ -311,6 +316,8 @@ enhancers = {
 		reward_effect = -1;
 		monster_target_only = true;
 	};
+	
+	-- TODO enhancers
 }
 
 
@@ -365,6 +372,8 @@ items = {
 
 		bonuses = { combat = 3 };
 	};
+	
+	-- TODO items
 };
 
 
@@ -386,7 +395,7 @@ GOAL.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end
 
 cards.
 goals = {
-	
+	-- TODO goals
 };
 
 
@@ -407,8 +416,136 @@ Curse.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; en
 
 cards.
 curses = {
-	
+	-- TODO curses
 };
+
+
+-- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- 
+--
+--  @Player
+--
+-- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- 
+
+
+-- plays the 'card' on the 'target' from 'self' player's hand.
+-- returns false if the given card cannot be played.
+Player.
+play_card = function(self, game, card, target)
+	if card.type == "race" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "class" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "monster" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "enhancer" then
+		log:error("not implemented yet");
+		return false;
+	elseif card.type == "item" then
+		if target ~= self then
+			return false; -- can only play item cards on self
+		end
+		if self.in_combat and not card.can_be_played_in_combat then
+			return false; -- can't play item cards in combat
+		end
+		if card.big and self.big_items >= self.max_big_items then
+			return false;
+		end
+		
+		if card.slot == "one_hand" then
+			if self.free_hands < 1 then
+				return false;
+			end
+			
+			self.free_hands = self.free_hands - 1;
+		elseif card.slot == "two_hands" then
+			if self.free_hands < 2 then
+				return false;
+			end
+			
+			self.free_hands = self.free_hands - 2;
+		elseif card.slot == "headgear" then
+			if not self.headgear then
+				return false;
+			end
+			
+			self.headgear = card;
+		elseif card.slot == "armor" then
+			if self.armor then
+				return false;
+			end
+			
+			self.armor = card;
+		end
+		
+		if card.big then
+			self.big_items = self.big_items + 1;
+		end
+		
+		move_card(self.in_hand, self.in_play, card);
+	elseif card.type == "goal" then
+		self:give_levels(1);
+		self:discard_inhand_card(game, card.name);
+	elseif card.type == "curse" then
+		log:error("not implemented yet");
+		move_card(self.in_hand, target.in_play, card);
+		return false;
+	end
+	
+	return true;
+end
+
+-- returns true if the player was able to discard the card
+Player.discard_card = function(self, game, src, name)
+	if card.group == "door" then
+		return move_card(src, game.door_discard, name);
+	elseif card.group == "treasure" then
+		return move_card(src, game.door_discard, name);
+	else
+		log:error("unknown card group '" .. card.group or "nil" .. "' on card '" .. name .. "'");
+		return false;
+	end
+end
+Player.discard_inplay_card = function(self, game, name) return self:discard_card(game, self.in_play, name); end
+Player.discard_inhand_card = function(self, game, name) return self:discard_card(game, self.in_hand, name); end
+
+-- called when this player kills 'monster'
+Player.
+on_combat_kill = function(self, game, monster)
+	for card in self.in_play do
+		if card.on_combat_kill then card.on_combat_kill(game, self) end
+	end
+
+	if game.active_player == self then
+		self:give_levels(monster.levels);
+	end
+end
+
+-- gathers the bonus called 'name' from the
+-- cards in play. If the bonus found is a 
+-- function it will be called with the player 
+-- as an argument. Otherwise it must be 
+-- a number.
+Player.
+gather_bonus = function(self, name)
+	local sum = 0;
+	for card in self.in_play do
+		local bonus = card.bonuses[name];
+		local bonus_type = type(bonus);
+		if bonus then
+			if "function" == bonus_type then
+				sum = sum + bonus(self);
+			elseif "number" == bonus_type then
+				sum = sum + bonus;
+			else
+				error("encountered card with a '"..name.."' bonus that is neither a function or a number!");
+			end
+		end
+	end
+	return sum;
+end
 
 
 return cards;

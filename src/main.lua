@@ -3,6 +3,7 @@ local game = require "game";
 local raylib = require "raylib";
 
 raylib.SetTraceLogLevel(raylib.LOG_ERROR)
+raylib.SetConfigFlags(raylib.FLAG_WINDOW_RESIZABLE)
 raylib.InitWindow(600, 600, "card");
 local monitor = raylib.GetCurrentMonitor();
 local monitor_width = raylib.GetMonitorWidth(monitor);
@@ -10,7 +11,6 @@ local monitor_height = raylib.GetMonitorHeight(monitor);
 raylib.SetWindowSize(monitor_width/2, monitor_height/2);
 raylib.SetWindowPosition(monitor_width/4, monitor_height/4);
 raylib.SetTargetFPS(raylib.GetMonitorRefreshRate(monitor));
-raylib.SetConfigFlags(raylib.FLAG_WINDOW_RESIZABLE)
 raylib.SetExitKey(raylib.KEY_NULL);
 
 game:init();
