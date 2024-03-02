@@ -13,6 +13,7 @@
 local Player = require "player";
 local log = require("logger").register_module("cards");
 local cards = {};
+cards.cards = {};
 
 
 -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- 
@@ -29,11 +30,14 @@ local Card = {
 	type = "** untyped card **"; -- race, class, monster, enhancer, item, goal, curse
 	name = "** unnamed card **";
 	desc = "** undescribed card **";
+	front = ""; -- TODO image path
+	back = ""; -- TODO image path
+	properties = {}; -- generic properties table of strings for querying
 	deck_count = 1; -- how many of this card are in the deck
 	
 	
 	-- bonuses added to value checks while a card is in play
-	-- default: function(game, player, args) return 0; end;
+	-- default: function(self, game, player, args) return 0; end;
 	-----------------------------------------------
 	-- added to a player's combat value
 	bonus_combat = nil;
@@ -44,7 +48,7 @@ local Card = {
 	
 	
 	-- automatic triggers when while a card is in play
-	-- default: function(game, player, args) return nil; end;
+	-- default: function(self, game, player, args) return nil; end;
 	-----------------------------------------------
 	-- called when a player wins combat
 	on_victory = nil;
@@ -58,7 +62,7 @@ local Card = {
 	
 	
 	-- checks to see if an action can be peformed by a player
-	-- default: function(game, player, args) return true; end;
+	-- default: function(self, game, player, args) return true; end;
 	-----------------------------------------------
 	-- whether or not this card can be played
 	can_play = nil;
@@ -72,7 +76,7 @@ local Card = {
 	
 	
 	-- actions triggered by the game or a player
-	-- default: function(game, player, args) return nil; end;
+	-- default: function(self, game, player, args) return nil; end;
 	-----------------------------------------------
 	-- called when a player plays this card
 	play = nil;
@@ -90,24 +94,14 @@ Card.__index = Card
 -- write something like Race {...} rather than Race.new {...}
 Card.__call = function(self, tbl) return self:new(tbl) end
 
--- removes the first card with 'name' in the 'src' table
--- returns the card that was removed
-local remove_card = function(src, name)
-	for idx,card in iparis(src) do
-		if card.name == name then
-			return table.remove(src, idx);
+-- returns true if the 'has' card has the 'property'
+Card.has_property = function(self, property)
+	for p in self.properties do
+		if p == property then
+			return true;
 		end
 	end
-	return nil;
-end
-
--- moves the first card with 'name' from the 'src' table to the 'dst' table
-local move_card = function(src, dst, name)
-	card = remove_card(src, name);
-	if card then
-		table.insert(dst, card);
-	end
-	return card ~= nil;
+	return false;
 end
 
 
@@ -128,18 +122,17 @@ local Race = {
 }
 Race.__index = Race;
 setmetatable(Race, Card);
-Race.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Race); end
+Race.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Race); return o; end
 
-cards.
-races = {
+cards.cards.races = {
 	Race { name = "Dwarf";
 		desc = "You can carry any number of Big items. You can have 6 cards in your hand.";
 		deck_count = 3;
-		play = function(game, player, args)
+		play = function(self, game, player, args)
 			player.max_big_items = 1000; -- arbitrarily large number since we don't have inf
 			player.max_in_play = 6;
 		end;
-		discard = function(game, player, args)
+		discard = function(self, game, player, args)
 			player.max_big_items = nil;
 			player.max_in_play = nil;
 		end;
@@ -148,10 +141,10 @@ races = {
 	Race { name = "Elf";
 		desc = "+1 to Run Away. You go up 1 Level for every monster you help someone else kill.";
 		deck_count = 3;
-		bonus_run_away = function(game, player, args)
+		bonus_run_away = function(self, game, player, args)
 			return 1;
 		end;
-		on_victory = function(game, player, args)
+		on_victory = function(self, game, player, args)
 			if game.active_player ~= player then
 				player:give_levels(1);
 			end
@@ -161,10 +154,10 @@ races = {
 	Race { name = "Half-Breed";
 		desc = "You may have two race cards, and have all of the advantages and disadvantages of each. Or you may have one race card and have all of its advantages and none of its disadvantages (for example, monsters that hate Elves will have on bonus against a Half-elf). Lose this card if you lose all your race card(s).";
 		deck_count = 2;
-		play = function(game, player, args)
+		play = function(self, game, player, args)
 			player.allow_second_race = true;
 		end;
-		discard = function(game, player, args)
+		discard = function(self, game, player, args)
 			player.allow_second_race = nil;
 		end;
 	};
@@ -172,16 +165,16 @@ races = {
 	Race { name = "Halfling";
 		desc = "You may sell one Item each turn for double the price (other Items are at normal price). If you fail your initial Run Away roll, you may discard a card and try once more.";
 		deck_count = 3;
-		can_use = function(game, player, args)
+		can_use = function(self, game, player, args)
 			return player.run_away_attempts == 1 and (#player.in_hand > 0 or #player.in_play > 0);
 		end;
-		play = function(game, player, card, args)
+		play = function(self, game, player, card, args)
 			player.double_first_sell = true;
 		end;
-		discard = function(game, player, args)
+		discard = function(self, game, player, args)
 			player.double_first_sell = nil;
 		end;
-		use = function(game, player, args)
+		use = function(self, game, player, args)
 			player.max_run_away_attempts = player.max_run_away_attempts + 1;
 		end;
 	};
@@ -199,38 +192,71 @@ local Class = {
 	type = "class";
 	group = "door";
 	abilities = {};
+	
+	can_play = function(game, player, args)
+		return game.active_player == player;
+	end
 }
 Class.__index = Class;
 setmetatable(Class, Card);
-Class.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Class); end
+Class.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Class); return o; end
 
-cards.
-classes = {
-	Class {
-		name = "Wizard";
+cards.cards.classes = {
+	Class { name = "Cleric";
+		deck_count = 3;
 		abilities = {
-			{ name = "Flight Spell";
-				desc = "You may discard up to three cards after rolling the die to Run Away; each one gives you a +1 bonus to flee.";
-				phases = "runaway";
-				can_use = function(game)
-					if game.phase == "run_away" then return true end
+			{
+				name = "Resurrection";
+				desc = "When it is time for you to draw cards face-up, you may instead take some or all from the top of the appropriate discard pile. You must then discard one card from your hand for each card drawn.";
+				can_use = function(self, game, player, args)
+					return game.active_player == player and game.phase == "draw_cards_faceup";
 				end;
-				bonuses = {
-					run_away = function(player)
-						return player:discard_up_to_n_cards(3)
-					end;
-				};
+				use = function(self, game, player, args)
+					-- TODO how to present options to the player?
+					log:error("not implemented yet");
+				end;
 			};
-			{ name = "Charm Spell";
-				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but don't gain levels. If there are other monsters in the combat, fight them normally.";
-				phases = "combat";
-				can_use = function(game, player)
-					if game.phase == "combat" and #player.hand >= 3 then
-						return true
+			{
+				name = "Turning";
+				desc = "You may discard up to 3 cards in combat against an Undead creature. Each discard gives you a +3 bonus.";
+				can_use = function(self, game, player, args)
+					if player.in_combat then
+						for monster in game.field.monsters do
+							if monster:has_property("undead") then
+								return true;
+							end
+						end
 					end
-					return false
+					return false;
 				end;
-				action = function(game, player)
+				use = function(self, game, player, args)
+					-- TODO how to present options to the player?
+					log:error("not implemented yet");
+				end;
+			};
+		};
+	};
+	
+	Class { name = "Wizard";
+		deck_count = 3;
+		abilities = {
+			{
+				name = "Flight Spell";
+				desc = "You may discard up to three cards after rolling the die to Run Away; each one gives you a +1 bonus to flee.";
+				can_use = function(self, game, player, args)
+					return game.phase == "run_away";
+				end;
+				use = function(self, game, player, args)
+					
+				end;
+			};
+			{
+				name = "Charm Spell";
+				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but don't gain levels. If there are other monsters in the combat, fight them normally.";
+				can_use = function(self, game, player, args)
+					return player.in_combat and #player.in_hand >= 3;
+				end;
+				use = function(self, game, player, args)
 					player:discard_hand();
 					local monster = player:choose_monster(game);
 					player:draw_treasure(monster.treasure);
@@ -254,67 +280,38 @@ classes = {
 local Monster = {
 	type = "monster";
 	group = "door";
-
-	-- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
-	good = "** missing Good Stuff text **";
-	bad  = "** missing Bad Stuff text **";
-	treasures = 0;
+	good = "** missing Good Stuff text **"; -- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
+	bad  = "** missing Bad Stuff text **";  -- TODO(sushi) remove and use formatting inside of 'desc' to do this instead
+	strength = 1;
+	treasures = 1;
 	levels = 1;
-	enhancers = {};
-
-	-- calc this monster's strength based on the given player
-	-- this must be overridden by implementations of Monster
-	calc_strength = function(self, game, player) error("encountered monster card '"..self.name.."' with unimplemented 'calc_strength' function.") end;
-
-	-- behavior upon victory of this monster. 'player' is the primary 
-	-- player that was first engaged with the monster (eg. the one that 
-	-- kicked down the door or summoned it) and 'helpers' are players 
-	-- that decided to help. 
-	-- this must be overridden by implementations of Monster
-	on_victory = function(self, game, player, helpers) error("encountered monster card '"..self.name.."' with unimplemeneted 'on_victory' function.") end;
 	
-	-- behavior upon encountering this monster. 'player' is any player
-	-- entering the combat encounter. Returns true if the player is
-	-- added as a helper to the combat encounter or false otherwise.
-	-- this is optional by implementations of Monster
-	on_encounter = function(self, game, player) return true; end;
+	on_victory = function(self, game, player, args)
+		player:draw_treasures(self:treasures(game, player, args));
+		player:gain_levels(self:levels(game, player, args));
+	end;
 }
 Monster.__index = Monster;
 setmetatable(Monster, Card);
-Monster.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Monster); end
+Monster.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Monster); return o; end
 
--- add an enhancer card to this monster object
-Monster.
-add_enhancer = function(self, x)
-	table.insert(self.enhancers, x);
-end
-
--- calculate the total effect enhancers have on this monster
-Monster.
-calc_enhancer_effect = function(self)
-	local sum = 0;
-	for _,enhancer in ipairs(self.enhancers) do
-		sum = sum + enhancer.effect;
-	end
-	return sum;
-end
-
-cards.
-monsters = {
+cards.cards.monsters = {
 	Monster { name = "3,872 Orcs";
 		good = "If this enemy is defeated, the Player gains 1 level and 3 treasures.";
 		bad  = "Due to ancient grudges, the 3,872 Orcs are level 16 (+6) against Dwarves. If this enemy is victorious, the Player must roll a die. On a 1 or 2, the 3,872 Orcs stomp the Player to death. On a 3 or higher, the Player loses however many Levels the die shows.";
-		treasures = 3;
-
-		calc_strength = function(self, game, player)
+		strength = function(self, game, player, args)
 			if player.race == "dwarf" then
-				return 16 + self:calc_enhancer_effect();
-			else
-				return 10 + self:calc_enhancer_effect();
+				return 16;
 			end
+			for helper in args.helpers do
+				if helper.race == "dwarf" then
+					return 16;
+				end
+			end
+			return 10;
 		end;
-
-		on_victory = function(self, game, player, helpers)
+		treasures = 3;
+		on_defeat = function(self, game, player, args)
 			local effect = function(x)
 				local roll = x:roll_die();
 				if roll <= 2 then
@@ -325,7 +322,7 @@ monsters = {
 			end
 
 			effect(player);
-			for helper in helpers do
+			for helper in args.helpers do
 				effect(helper);
 			end
 		end;
@@ -336,11 +333,11 @@ monsters = {
 		bad = "If this enemy is victorious, the male Player has been defeated by a woman, therefore losing his macho munchkin pride. The Player also loses his Class(es). However, if the Player has no Class, he loses 3 Levels instead.";
 		treasures = 2;
 		
-		calc_strength = function(self, game, player)
-			return 8 + self:calc_enhancer_effect();
+		strength = function(self, game, player)
+			return 8;
 		end;
 		
-		on_victory = function(self, game, player, helpers)
+		on_victory = function(self, game, player, args)
 			if player.class then
 				player.class = nil;
 				player.class2 = nil;
@@ -350,7 +347,7 @@ monsters = {
 			end
 		end;
 		
-		on_encounter = function(self, game, player)
+		on_encounter = function(self, game, player, args)
 			if player.gender == "female" then
 				player:draw_treasures(1);
 				return false;
@@ -382,8 +379,7 @@ Enhancer.__index = Enhancer;
 setmetatable(Enhancer, Card);
 Enhancer.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Enhancer); return o; end
 
-cards.
-enhancers = {
+cards.cards.enhancers = {
 	Enhancer {
 		name = "Baby";
 		desc = "-5 to monster. Play during combat. If the monster is defeated, draw 1 fewer Treasure.";
@@ -412,8 +408,7 @@ Item.__index = Item;
 setmetatable(Item, Card);
 Item.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Item); return o; end
 
-cards.
-items = {
+cards.cards.items = {
 	Item { name = "Tuba of Charm";
 		slot = "one_hand";
 		big = true;
@@ -473,8 +468,7 @@ setmetatable(GOAL, Card);
 GOAL.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, GOAL); return o; end
 
 
-cards.
-goals = {
+cards.cards.goals = {
 	-- TODO goals
 };
 
@@ -494,8 +488,7 @@ Curse.__index = Curse;
 setmetatable(Curse, Card);
 Curse.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Curse); return o; end
 
-cards.
-curses = {
+cards.cards.curses = {
 	-- TODO curses
 };
 
@@ -509,8 +502,7 @@ curses = {
 
 -- plays the 'card' on the 'target' from 'self' player's hand.
 -- returns false if the given card cannot be played.
-Player.
-play_card = function(self, game, card, target)
+Player.play_card = function(self, game, card, target)
 	if not card:can_play(game, self, target) then
 		return false;
 	end
@@ -534,8 +526,7 @@ Player.discard_inplay_card = function(self, game, name) return self:discard_card
 Player.discard_inhand_card = function(self, game, name) return self:discard_card(game, self.in_hand, name); end
 
 -- called when this player kills 'monster'
-Player.
-on_combat_kill = function(self, game, monster)
+Player.on_combat_kill = function(self, game, monster)
 	for card in self.in_play do
 		if card.on_combat_kill then card.on_combat_kill(game, self) end
 	end
@@ -550,8 +541,7 @@ end
 -- function it will be called with the player 
 -- as an argument. Otherwise it must be 
 -- a number.
-Player.
-gather_bonus = function(self, name)
+Player.gather_bonus = function(self, name)
 	local sum = 0;
 	for card in self.in_play do
 		local bonus = card.bonuses[name];
@@ -567,6 +557,72 @@ gather_bonus = function(self, name)
 		end
 	end
 	return sum;
+end
+
+
+-- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- 
+--
+--  @cards
+--
+-- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- ** -- 
+
+
+-- returns the index of the first card with 'name' in the 'tbl' table
+cards.find_card = function(tbl, name)
+	for idx,card in iparis(tbl) do
+		if card.name == name then
+			return idx;
+		end
+	end
+	return nil;
+end
+
+-- removes the first card with 'name' in the 'tbl' table
+-- returns the card that was removed
+cards.remove_card = function(tbl, name)
+	idx = cards.find_card(tbl, name);
+	if idx then
+		return table.remove(tbl, idx);
+	end
+	return nil;
+end
+
+-- moves the first card with 'name' from the 'src_tbl' table to the 'dst_tbl' table
+cards.move_card = function(src_tbl, dst_tbl, name)
+	card = cards.remove_card(src_tbl, name);
+	if card then
+		table.insert(dst_tbl, card);
+	end
+	return card ~= nil;
+end
+
+-- shuffles the cards in the 'tbl' table and returns it
+cards.shuffle_cards = function(tbl)
+	tbl_size = #tbl;
+	if tbl_size > 1 then
+		for i=1, tbl_size-1 do
+			local j = math.random(i, tbl_size-i+1);
+			local t = tbl[j];
+			tbl[j] = tbl[i];
+			tbl[i] = t;
+		end
+	end
+	return tbl;
+end
+
+-- returns a fresh shuffled deck of cards with 'key' set to 'value'
+cards.new_deck = function(self, key, value)
+	deck = {};
+	for _,card_tbl in pairs(self.cards) do
+		for _,card in pairs(card_tbl) do
+			if card[key] == value then
+				for _=1,card.deck_count do
+					table.insert(deck, card);
+				end
+			end
+		end
+	end
+	return cards.shuffle_cards(deck);
 end
 
 

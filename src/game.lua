@@ -74,39 +74,47 @@ end
 game.
 init = function(self)
 	self.menu = Menu.Main;
-	self.player_count = 2;
+	self.settings = {};
+	self.settings.player_count = 2;
 end
 
 game.
 start = function(self)
+	math.randomseed(os.time());
 	game.update_coroutine = co.create(game.update_coroutine_definition)
 
 	-- turn counter
 	self.turn = 0
 	-- phase counter, which are discrete parts of a turn
-	self.phase = 0
-
-	log("creating ", self.player_count, " players")
+	self.phase = ""; -- combat, run_away
 
 	-- create each player table
 	self.players = {}
-	for _=1,self.player_count do
+	for _=1,self.settings.player_count do
 		local o = {}
 		setmetatable(o, Player)
 		table.insert(self.players, o)
 	end
-
-	log("loading door and treasure decks")
-
-	self.door_deck = cards.treasure_deck
+	self.active_player = math.random(self.settings.player_count);
+	log("created ", #self.players, " players");
+	
+	-- create door, treasure, and discard decks
+	self.door_deck = cards:new_deck("group", "door");
 	self.door_discard = {};
-	self.treasure_deck = cards.door_deck
+	self.treasure_deck = cards:new_deck("group", "treasure");
 	self.treasure_discard = {};
-
+	log("created a door deck with ", #self.door_deck, " cards");
+	log("created a treasure deck with ", #self.treasure_deck, " cards");
+	
 	-- set of cards that have been 'played' in this phase
 	self.field = {
-		-- set of monsters active in combat
+		-- set of monsters and their enhancers active in combat
 		monsters = {};
+		monster_enhancers = {};
+		
+		-- set of players and their enhancers active in combat
+		players = {};
+		player_enhancers = {};
 	}
 
 	self.current_animation = nil
@@ -357,7 +365,7 @@ main_menu = function()
 
 		ui.set_raystyle("spinner", "text_padding", 10)
 		if raygui.GuiSpinner(ui.rect(button_w-text_w, button_h), "Players", game.player_count_ptr, 2, 12, false) ~= 0 then
-			game.player_count = game.player_count_ptr[0]
+			game.settings.player_count = game.player_count_ptr[0]
 		end
 
 		ui.dx(-text_w)

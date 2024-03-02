@@ -26,7 +26,6 @@ local Player = {
 	
 	-- per turn values
 	in_combat = nil;
-	turn_owner = nil;
 	run_away_attempts = 0;
 }
 Player.__index = Player;
@@ -44,7 +43,6 @@ end
 Player.
 turn_reset = function(self)
 	self.in_combat = nil;
-	self.turn_owner = nil;
 	self.run_away_attempts = 0;
 end
 
