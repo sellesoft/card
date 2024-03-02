@@ -688,7 +688,7 @@ cards.cards.goals = {
 	GOAL { name = "Potion of General Studliness"; };
 	
 	GOAL { name = "Whine at the GM";
-		desc = "YOu can't use this if you are currently the highest-Level player, or tied for highest.";
+		desc = "You can't use this if you are currently the highest-Level player, or tied for highest.";
 		can_play = function(self, game, player, args)
 			return game.phase == "run_away" or game.phase == "defeat" or game.phase == "victory_solo" or game.phase == "victory_shared";
 		end;
@@ -966,7 +966,7 @@ end
 
 -- returns a copy of the src card with a unique id
 cards.make = function(self, src)
-	self.uid_counter = self.uid_counter and self.uid_counter + 1 or 0;
+	self.uid_counter = (self.uid_counter and self.uid_counter + 1) or 0;
 	local dst = {};
 	for k,v in pairs(src) do
 		dst[k] = v;

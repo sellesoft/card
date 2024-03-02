@@ -20,7 +20,7 @@ local raylib = load_module "raylib"
 local raygui = load_module "raygui"
 local cards  = load_module "cards"
 local Player = load_module "player"
-local dbg    = load_module "debugger"
+-- local dbg    = load_module "debugger"
 local reload = load_module "reload"
 
 -- 'protected' coroutine resume
@@ -54,6 +54,7 @@ local map_linear_range_clamped = function(in_start, in_end, out_start, out_end, 
 end
 
 
+
 -- <<                                                                               >>
 --    -----------------------------------------------------------------------------  
 -- <<                                                                               >>
@@ -63,6 +64,7 @@ end
 -- <<                                                                               >>
 --    -----------------------------------------------------------------------------  
 -- <<                                                                               >>
+
 
 
 game.
@@ -89,18 +91,24 @@ start = function(self)
 	for _=1,self.settings.player_count do
 		local o = {}
 		setmetatable(o, Player)
+		o.in_hand = {};
+		o.in_play = {};
 		table.insert(self.players, o)
 	end
 	self.active_player = math.random(self.settings.player_count);
 	log("created ", #self.players, " players");
+
+	-- TODO(sushi) distrubute players properly when
+	--             we actually have networking
+	self.client_player = self.players[1]
 	
 	-- create door, treasure, and discard decks
 	self.door_deck = cards:new_deck("group", "door");
 	self.door_discard = {};
 	self.treasure_deck = cards:new_deck("group", "treasure");
 	self.treasure_discard = {};
-	log("created a door deck with ", #self.door_deck, " cards");
-	log("created a treasure deck with ", #self.treasure_deck, " cards");
+	log("created door deck with ", #self.door_deck, " cards");
+	log("created treasure deck with ", #self.treasure_deck, " cards");
 	
 	-- set of cards that have been 'played' in this phase
 	self.field = {
@@ -220,17 +228,9 @@ ui = {
 	my = 0;
 
 	-- helpers for moving the cursor
-	dx = function(n) ui.x = ui.x + n end;
-	dy = function(n) ui.y = ui.y + n end;
+	dx  = function(n) ui.x = ui.x + n end;
+	dy  = function(n) ui.y = ui.y + n end;
 	dxy = function(x,y) ui.x,ui.y = ui.x + x, ui.y + y end;
-
-
--- () --- () --- () --- () --- () --- () --- * --- () --- () --- () --- () --- () --- ()
---
---	Groups are rects that can be pushed onto a stack so that we may set contexts for 
---	ui elements to draw inside of.
---
--- () --- () --- () --- () --- () --- () --- * --- () --- () --- () --- () --- () --- ()
 
 	group_stack = {};
 
@@ -246,12 +246,19 @@ ui = {
 		ui.x,ui.y,ui.ex,ui.ey = g[1],g[2],g[3],g[4]
 	end;
 
+	-- prevent allocating two new tables in 
+	-- every scoped_group
+	scoped_group_result = { x = 0; y = 0; returns = nil; };
+
 	scoped_group = function(w, h, f)
 		-- save on stack instead 
 		local x,y,ex,ey = ui.x,ui.y,ui.ex,ui.ey
 		ui.ex, ui.ey = ui.x + w, ui.y + h
-		f(ui.ex-ui.x, ui.ey-ui.y)
+		ui.scoped_group_result.returns = {f(ui.ex-ui.x,ui.ey-ui.y)}
+		ui.scoped_group_result.x = ui.x
+		ui.scoped_group_result.y = ui.y
 		ui.x,ui.y,ui.ex,ui.ey = x,y,ex,ey
+		return ui.scoped_group_result
 	end;
 
 	-- returns a rect at the current position with given width and height
@@ -291,6 +298,17 @@ ui = {
 	set_raystyle = function(control, prop, val)
 		raygui.GuiSetStyle(raygui[string.upper(control)], raygui[string.upper(prop)], val)
 	end;
+
+	-- arbitrary state used by various elements of ui
+	state = {};
+
+	lmouse_pressed  = function() return raylib.IsMouseButtonPressed(raylib.MOUSE_BUTTON_LEFT) end;
+	lmouse_released = function() return raylib.IsMouseButtonReleased(raylib.MOUSE_BUTTON_LEFT) end;
+	lmouse_down     = function() return raylib.IsMouseButtonDown(raylib.MOUSE_BUTTON_LEFT) end;
+
+	rmouse_pressed  = function() return raylib.IsMouseButtonPressed(raylib.MOUSE_BUTTON_RIGHT) end;
+	rmouse_released = function() return raylib.IsMouseButtonReleased(raylib.MOUSE_BUTTON_RIGHT) end;
+	rmouse_down     = function() return raylib.IsMouseButtonDown(raylib.MOUSE_BUTTON_RIGHT) end;
 }
 
 reload.register("ui", "src/game.lua", ui)
@@ -309,6 +327,7 @@ update_style = function()
 	style.card = {}
 	style.card.h = game.window_height / 4
 	style.card.w = style.card.h / 1.4
+	style.card.border = math.max(1, math.floor(style.card.w / 32));
 
 	style.card.colors = {
 		door_face     = ui.colorint { 255, 241, 228, 255 };
@@ -376,7 +395,7 @@ end;
 ui.
 card_face = function(card, x, y)
 	-- border
-	local card_border = math.max(1, math.floor(game.card_width / 32));
+	local card_border = ui.style.card.border
 	local border_color = raylib.ColorToInt(raylib.DARKBROWN);
 	raygui.GuiSetStyle(raygui.DEFAULT, raygui.BACKGROUND_COLOR, border_color);
 	raygui.GuiPanel(ui.rect(ui.style.card.w, ui.style.card.h), nil);
@@ -442,6 +461,66 @@ static_cards = function()
 	-- draw_card_deck("Treasure Discard Deck", game.treasure_discard);
 end;
 
+-- draws the decks in the upperleft corner of the group
+-- returns "door" or "treasure" if one of the decks
+-- were clicked or nil if no input was recieved 
+ui.decks = function()
+	local style = ui.style
+
+	local w = style.card.w * 2 + style.field.deck_spacing + 2 * style.field.deck_group_padding
+	local h = style.card.h * 0.8
+
+	ui.state.decks = ui.state.decks or {}
+	local state = ui.state.decks
+
+	local bg_h = h * 0.8
+
+	ui.set_bg_col(style.field.bg_color)
+	raygui.GuiPanel(ui.rect(w, bg_h), nil)
+
+	local yinset = style.card.h * 0.2
+
+	-- inset cards a bit into the top
+	ui.dy(-yinset)
+
+	ui.dx(style.field.deck_group_padding)
+
+	state.door_timer = state.door_timer or 0
+	state.treasure_timer = state.treasure_timer or 0
+
+	local clicked
+
+	local timer_delta = function(rect, timer, id)
+		if ui.mx > rect[1] and ui.mx < rect[3] and
+		   ui.my > rect[2] and ui.my < rect[4] then
+		    if not clicked then
+				if ui.lmouse_pressed() then
+					clicked = id
+				end
+			end
+			timer = timer + raygui.GetFrameTime()
+		else
+			timer = timer - raygui.GetFrameTime()
+		end
+
+		return math.max(0, math.min(style.field.slide_time, timer))
+	end
+
+	local door_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, state.door_timer)
+	local dr = {ui.x, door_y, ui.x+style.card.w, ui.y+style.card.h}
+	state.door_timer = timer_delta(dr, state.door_timer, "door")
+	ui.card_back({group="door"}, 0, door_y)
+
+	ui.dx(style.card.w + style.field.deck_spacing)
+
+	local treasure_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, state.treasure_timer)
+	local tr = {ui.x, treasure_y, ui.x+style.card.w, ui.y+style.card.h}
+	state.treasure_timer = timer_delta(tr, state.treasure_timer, "treasure")
+	ui.card_back({group="treasure"}, 0, treasure_y)
+
+	return clicked, w, h
+end
+
 -- draws the 'field' which are cards that are in play 
 -- and the decks
 ui.
@@ -454,62 +533,36 @@ field = function(w, h)
 
 	-- decks group 
 	-- top-left cutoff and such
+	local clicked, decks_w, decks_h = ui.decks()
+
+	ui.x = 0
+	ui.y = decks_h
+
+	-- draw monsters
 	
-	ui.scoped_group(
-		style.card.w * 2 + style.field.deck_spacing + 2 * style.field.deck_group_padding,
-		style.card.h * 0.8,
-	function(w,h)
-		local bg_h = h * 0.8
-
-		ui.set_bg_col(style.field.bg_color)
-		raygui.GuiPanel(ui.rect(w, bg_h), nil)
-
-		local yinset = style.card.h * 0.1
-
-		-- inset cards a bit into the top
-		ui.dy(-yinset)
-
-		ui.dx(style.field.deck_group_padding)
-
-		game.data.field_door_timer = game.data.field_door_timer or 0
-		game.data.field_treasure_timer = game.data.field_treasure_timer or 0
-
-
-		local get_timer_delta = function(rect, timer)
-			if ui.mx > rect[1] and ui.mx < rect[3] and
-			   ui.my > rect[2] and ui.my < rect[4] then
-				timer = timer + raygui.GetFrameTime()
-			else
-				timer = timer - raygui.GetFrameTime()
-			end
-
-			return math.max(0, math.min(style.field.slide_time, timer))
-		end
-
-		local door_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_door_timer)
-		local dr = {ui.x, door_y, ui.x+style.card.w, ui.y+style.card.h}
-		game.data.field_door_timer = get_timer_delta(dr, game.data.field_door_timer)
-		ui.card_back({group="door"}, 0, door_y)
-
-		ui.dx(style.card.w + style.field.deck_spacing)
-
-		local treasure_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_treasure_timer)
-		local tr = {ui.x, treasure_y, ui.x+style.card.w, ui.y+style.card.h}
-		game.data.field_treasure_timer = get_timer_delta(tr, game.data.field_treasure_timer)
-		ui.card_back({group="treasure"}, 0, treasure_y)
-	end)
+	raygui.GuiPanel(ui.rect(10,10), nil)
 end;
 
-ui.
-game_start = function()
-	ui.scoped_group(game.window_width, game.window_height,
-	function(w, h)
-		
-	end)
+ui.client_hand = function(w, h)
+	local style = ui.style
+	local player = game.client_player
+	local n_cards = #player.in_hand
+
+	local card_spacing = math.min(style.card.w + 2, w / n_cards)
+
+	ui.dx(w-ui.style.card.w)
+
+	for i=1,n_cards do
+		ui.card_back({group="door"}, 0,0)
+		ui.dx(-card_spacing)
+	end
 end
 
-ui.
-kick_door = function()
+ui.game_start = function()
+
+end
+
+ui.pre_door = function()
 	ui.scoped_group(game.window_width, game.window_height,
 	function(w, h)
 		local font_height = 30
@@ -525,13 +578,8 @@ kick_door = function()
 		local shelf_w = w
 
 		ui.scoped_group(shelf_w, h - shelf_h, ui.field)
-
-		ui.scoped_group(shelf_w, shelf_h, 
-		function(w, h)
-			for i=1,3 do
-				
-			end
-		end)
+		ui.y = game.window_height - ui.style.card.h
+		ui.client_hand(game.window_width, game.window_height)
 	end)
 end;
 
@@ -606,16 +654,23 @@ update_coroutine_definition = function(self)
 	do log:trace "-- ( game start ) --"
 		-- distribute initial cards and such to each player
 		
+		cards.shuffle_cards(game.treasure_deck)
+		cards.shuffle_cards(game.door_deck)
+
+		for i=1,game.settings.player_count do
+			local player = game.players[i]
+			for _=1,4 do
+				table.insert(player.in_hand, table.remove(game.door_deck, #game.door_deck))
+				table.insert(player.in_hand, table.remove(game.treasure_deck, #game.treasure_deck))
+			end
+			log:debug("gave player ", i, " ", #player.in_hand, " cards")
+		end
 	end
 
-	::turn_start:: -- :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: turn_start
-	do log:trace "--( turn start )--"
-
-		self.current_animation = anim.turn_start:init()
-		wait_for_animations()
-
+	::pre_door:: -- :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: :: pre_door
+	do log:trace "--( pre door )--"
 		while true do
-			if ui.protected(ui.kick_door) then
+			if ui.protected(ui.pre_door) then
 				break
 			end
 			suspend_update()
