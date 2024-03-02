@@ -315,12 +315,12 @@ update_style = function()
 	style.main_menu = {}
 	style.main_menu.padding = 3
 
-	style.field = {}
-	style.field.deck_spacing = 4
-	style.field.deck_group_padding = 3
-	style.field.bg_color = ui.colorint { 100, 125, 100, 255 };
-
-	style.field.slide_time = 0.05
+	style.field = {
+		deck_spacing = 4;
+		deck_group_padding = 3;
+		bg_color = ui.colorint { 100, 125, 100, 255 };
+		slide_time = 0.1;
+	}
 end
 
 ui.
@@ -438,8 +438,12 @@ end;
 -- draws the 'field' which are cards that are in play 
 -- and the decks
 ui.
-field = function()
+field = function(w, h)
 	local style = ui.style
+
+	-- background
+	ui.set_bg_col(ui.colorint { 0, 30, 60, 255 })
+	raygui.GuiPanel(ui.rect(w, h), nil)
 
 	-- decks group 
 	-- top-left cutoff and such
@@ -449,7 +453,7 @@ field = function()
 		style.card.h * 0.8,
 	function(w,h)
 		local bg_h = h * 0.8
-		
+
 		ui.set_bg_col(style.field.bg_color)
 		raygui.GuiPanel(ui.rect(w, bg_h), nil)
 
@@ -457,42 +461,45 @@ field = function()
 
 		-- inset cards a bit into the top
 		ui.dy(-yinset)
-		
 
 		ui.dx(style.field.deck_group_padding)
 
 		game.data.field_door_timer = game.data.field_door_timer or 0
 		game.data.field_treasure_timer = game.data.field_treasure_timer or 0
 
-		local treasure_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_treasure_timer)
-		local door_y     = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_door_timer)
 
-		local dr = {ui.x, door_y, ui.x+style.card.w, ui.y+style.card.h}
-		if ui.mx > dr[1] and ui.mx < dr[3] and
-			ui.my > dr[2] and ui.my < dr[4] then
-			game.data.field_door_timer = game.data.field_door_timer + raygui.GetFrameTime()
-		else
-			game.data.field_door_timer = game.data.field_door_timer - raygui.GetFrameTime()
+		local get_timer_delta = function(rect, timer)
+			if ui.mx > rect[1] and ui.mx < rect[3] and
+			   ui.my > rect[2] and ui.my < rect[4] then
+				timer = timer + raygui.GetFrameTime()
+			else
+				timer = timer - raygui.GetFrameTime()
+			end
+
+			return math.max(0, math.min(style.field.slide_time, timer))
 		end
 
-		game.data.field_door_timer = math.max(0, math.min(style.field.slide_time, game.data.field_door_timer))
+		local door_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_door_timer)
+		local dr = {ui.x, door_y, ui.x+style.card.w, ui.y+style.card.h}
+		game.data.field_door_timer = get_timer_delta(dr, game.data.field_door_timer)
 		ui.card_back({group="door"}, 0, door_y)
 
 		ui.dx(style.card.w + style.field.deck_spacing)
 
+		local treasure_y = map_linear_range_clamped(0, style.field.slide_time, 0, yinset, game.data.field_treasure_timer)
 		local tr = {ui.x, treasure_y, ui.x+style.card.w, ui.y+style.card.h}
-		if ui.mx > tr[1] and ui.mx < tr[3] and
-		   ui.my > tr[2] and ui.my < tr[4] then
-			game.data.field_treasure_timer = game.data.field_treasure_timer + raygui.GetFrameTime()
-		else
-			game.data.field_treasure_timer = game.data.field_treasure_timer - raygui.GetFrameTime()
-		end
-
-		game.data.field_treasure_timer = math.max(0, math.min(style.field.slide_time, game.data.field_treasure_timer))
-
+		game.data.field_treasure_timer = get_timer_delta(tr, game.data.field_treasure_timer)
 		ui.card_back({group="treasure"}, 0, treasure_y)
 	end)
 end;
+
+ui.
+game_start = function()
+	ui.scoped_group(game.window_width, game.window_height,
+	function(w, h)
+		
+	end)
+end
 
 ui.
 kick_door = function()
@@ -507,10 +514,17 @@ kick_door = function()
 		local button_h = font_height + button_padding * 2
 
 		local shelf_padding = 3
-		local shelf_h = button_h + 2 * shelf_padding
+		local shelf_h = ui.style.card.h * 0.8 + 2 * shelf_padding
 		local shelf_w = w
 
-		ui.scoped_group(w, h - shelf_h, ui.field)
+		ui.scoped_group(shelf_w, h - shelf_h, ui.field)
+
+		ui.scoped_group(shelf_w, shelf_h, 
+		function(w, h)
+			for i=1,3 do
+				
+			end
+		end)
 	end)
 end;
 
