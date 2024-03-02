@@ -29,21 +29,60 @@ local Card = {
 	type = "** untyped card **"; -- race, class, monster, enhancer, item, goal, curse
 	name = "** unnamed card **";
 	desc = "** undescribed card **";
+	deck_count = 1; -- how many of this card are in the deck
+	
+	
+	-- bonuses added to value checks while a card is in play
+	-- default: function(game, player, args) return 0; end;
+	-----------------------------------------------
+	-- added to a player's combat value
+	bonus_combat = nil;
 
-	-- various 'bonuses' this card gives. All cards alter
-	-- the behavior of the player via this table!
-	bonuses = {
-		-- added to a player's combat value
-		combat = nil;
+	-- added to a player's run away roll
+	bonus_run_away = nil;
+	-----------------------------------------------
+	
+	
+	-- automatic triggers when while a card is in play
+	-- default: function(game, player, args) return nil; end;
+	-----------------------------------------------
+	-- called when a player wins combat
+	on_victory = nil;
+	
+	-- called when a player loses combat
+	on_defeat = nil;
+	
+	-- called when a player attempts to run away from combat
+	on_run_away = nil;
+	-----------------------------------------------
+	
+	
+	-- checks to see if an action can be peformed by a player
+	-- default: function(game, player, args) return true; end;
+	-----------------------------------------------
+	-- whether or not this card can be played
+	can_play = nil;
 
-		-- added to a player's run away roll
-		run_away = nil;
-	};
-
-	-- various callbacks queried throughout the game
-	actions = {
-		
-	};
+	-- whether or not this card can be discarded
+	can_discard = nil;
+	
+	-- whether or not this card can be used while already in play
+	can_use = nil;
+	-----------------------------------------------
+	
+	
+	-- actions triggered by the game or a player
+	-- default: function(game, player, args) return nil; end;
+	-----------------------------------------------
+	-- called when a player plays this card
+	play = nil;
+	
+	-- called when a player discards this card
+	discard = nil;
+	
+	-- called when a player uses this card while it's in play
+	use = nil;
+	-----------------------------------------------
 }
 Card.__index = Card
 -- setup __call to redirect to the 'new' function that 
@@ -82,6 +121,10 @@ end
 local Race = {
 	type = "race";
 	group = "door";
+	
+	can_play = function(game, player, args)
+		return game.active_player == player;
+	end
 }
 Race.__index = Race;
 setmetatable(Race, Card);
@@ -89,27 +132,59 @@ Race.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end
 
 cards.
 races = {
-	dwarf = Race {
-		name = "Dwarf";
+	Race { name = "Dwarf";
 		desc = "You can carry any number of Big items. You can have 6 cards in your hand.";
-		bonuses = {
-			max_big_items = 1000; -- arbitrarily large number since we don't have inf
-			max_in_play = 6;
-		};
+		deck_count = 3;
+		play = function(game, player, args)
+			player.max_big_items = 1000; -- arbitrarily large number since we don't have inf
+			player.max_in_play = 6;
+		end;
+		discard = function(game, player, args)
+			player.max_big_items = nil;
+			player.max_in_play = nil;
+		end;
 	};
 	
-	elf = Race {
-		name = "Elf";
+	Race { name = "Elf";
 		desc = "+1 to Run Away. You go up 1 Level for every monster you help someone else kill.";
-		bonuses = { run_away = 1; };
-		on_combat_kill = function(game, player)
+		deck_count = 3;
+		bonus_run_away = function(game, player, args)
+			return 1;
+		end;
+		on_victory = function(game, player, args)
 			if game.active_player ~= player then
 				player:give_levels(1);
 			end
 		end;
 	};
 	
-	-- TODO races
+	Race { name = "Half-Breed";
+		desc = "You may have two race cards, and have all of the advantages and disadvantages of each. Or you may have one race card and have all of its advantages and none of its disadvantages (for example, monsters that hate Elves will have on bonus against a Half-elf). Lose this card if you lose all your race card(s).";
+		deck_count = 2;
+		play = function(game, player, args)
+			player.allow_second_race = true;
+		end;
+		discard = function(game, player, args)
+			player.allow_second_race = nil;
+		end;
+	};
+	
+	Race { name = "Halfling";
+		desc = "You may sell one Item each turn for double the price (other Items are at normal price). If you fail your initial Run Away roll, you may discard a card and try once more.";
+		deck_count = 3;
+		can_use = function(game, player, args)
+			return player.run_away_attempts == 1 and (#player.in_hand > 0 or #player.in_play > 0);
+		end;
+		play = function(game, player, card, args)
+			player.double_first_sell = true;
+		end;
+		discard = function(game, player, args)
+			player.double_first_sell = nil;
+		end;
+		use = function(game, player, args)
+			player.max_run_away_attempts = player.max_run_away_attempts + 1;
+		end;
+	};
 }
 
 
@@ -131,7 +206,7 @@ Class.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; en
 
 cards.
 classes = {
-	wizard = Class {
+	Class {
 		name = "Wizard";
 		abilities = {
 			{ name = "Flight Spell";
@@ -243,7 +318,7 @@ monsters = {
 			local effect = function(x)
 				local roll = x:roll_die();
 				if roll <= 2 then
-					x:die();
+					x:full_reset();
 				else
 					x:lose_levels(roll);
 				end
@@ -368,7 +443,7 @@ items = {
 		type = "item";
 		slot = "headgear";
 		value = 400;
-		class = cards.classes.wizard;
+		class = "Wizard";
 
 		bonuses = { combat = 3 };
 	};
@@ -387,6 +462,11 @@ items = {
 local GOAL = {
 	type = "goal";
 	group = "treasure";
+	
+	play = function(card, game, player, args)
+		player:give_level(1);
+		player:discard_inhand_card();
+	end;
 }
 GOAL.__index = GOAL;
 setmetatable(GOAL, Card);
@@ -431,70 +511,12 @@ curses = {
 -- returns false if the given card cannot be played.
 Player.
 play_card = function(self, game, card, target)
-	if card.type == "race" then
-		log:error("not implemented yet");
-		return false;
-	elseif card.type == "class" then
-		log:error("not implemented yet");
-		return false;
-	elseif card.type == "monster" then
-		log:error("not implemented yet");
-		return false;
-	elseif card.type == "enhancer" then
-		log:error("not implemented yet");
-		return false;
-	elseif card.type == "item" then
-		if target ~= self then
-			return false; -- can only play item cards on self
-		end
-		if self.in_combat and not card.can_be_played_in_combat then
-			return false; -- can't play item cards in combat
-		end
-		if card.big and self.big_items >= self.max_big_items then
-			return false;
-		end
-		
-		if card.slot == "one_hand" then
-			if self.free_hands < 1 then
-				return false;
-			end
-			
-			self.free_hands = self.free_hands - 1;
-		elseif card.slot == "two_hands" then
-			if self.free_hands < 2 then
-				return false;
-			end
-			
-			self.free_hands = self.free_hands - 2;
-		elseif card.slot == "headgear" then
-			if not self.headgear then
-				return false;
-			end
-			
-			self.headgear = card;
-		elseif card.slot == "armor" then
-			if self.armor then
-				return false;
-			end
-			
-			self.armor = card;
-		end
-		
-		if card.big then
-			self.big_items = self.big_items + 1;
-		end
-		
-		move_card(self.in_hand, self.in_play, card);
-	elseif card.type == "goal" then
-		self:give_levels(1);
-		self:discard_inhand_card(game, card.name);
-	elseif card.type == "curse" then
-		log:error("not implemented yet");
-		move_card(self.in_hand, target.in_play, card);
+	if not card:can_play(game, self, target) then
 		return false;
 	end
 	
-	return true;
+	card:play(game, self, {target=target});
+	move_card(self.in_hand, self.in_play, card.name);
 end
 
 -- returns true if the player was able to discard the card
@@ -502,7 +524,7 @@ Player.discard_card = function(self, game, src, name)
 	if card.group == "door" then
 		return move_card(src, game.door_discard, name);
 	elseif card.group == "treasure" then
-		return move_card(src, game.door_discard, name);
+		return move_card(src, game.treasure_discard, name);
 	else
 		log:error("unknown card group '" .. card.group or "nil" .. "' on card '" .. name .. "'");
 		return false;
