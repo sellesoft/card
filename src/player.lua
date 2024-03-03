@@ -6,8 +6,8 @@
 -- 
 local Player = {
 	type = "player";
-	in_hand = {};
-	in_play = {};
+	in_hand = nil; -- NOTE(sushi) these tables are created when an instance of a player is created
+	in_play = nil; --             otherwise all players share cards!
 	
 	level = 1;
 	race = nil;
