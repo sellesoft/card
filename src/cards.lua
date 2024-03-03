@@ -38,18 +38,18 @@ local Card = {
 	
 	
 	-- bonuses added to value checks while a card is in play
-	-- default: function(self, game, player, args) return 0; end;
+	-- default: function(self, game, player) return 0; end;
 	-----------------------------------------------
-	-- added to a players combat value
+	-- added to a player's combat value
 	bonus_combat = nil;
 
-	-- added to a players run away roll
+	-- added to a player's run away roll
 	bonus_run_away = nil;
 	-----------------------------------------------
 	
 	
 	-- automatic triggers when while a card is in play
-	-- default: function(self, game, player, args) return nil; end;
+	-- default: function(self, game, player) return nil; end;
 	-----------------------------------------------
 	-- called when a player wins combat
 	on_victory = nil;
@@ -63,7 +63,7 @@ local Card = {
 	
 	
 	-- checks to see if an action can be peformed by a player
-	-- default: function(self, game, player, args) return true; end;
+	-- default: function(self, game, player) return true; end;
 	-----------------------------------------------
 	-- whether or not this card can be played
 	can_play = nil;
@@ -77,7 +77,7 @@ local Card = {
 	
 	
 	-- actions triggered by the game or a player
-	-- default: function(self, game, player, args) return nil; end;
+	-- default: function(self, game, player) return nil; end;
 	-----------------------------------------------
 	-- called when a player plays this card
 	play = nil;
@@ -117,8 +117,8 @@ local Race = {
 	kind = "race";
 	group = "door";
 	
-	can_play = function(game, player, args)
-		return game.active_player == player;
+	can_play = function(game, player)
+		return game.active_player == player and not player.race or (player.allow_second_race and not player.race2);
 	end
 }
 Race.__index = Race;
@@ -129,11 +129,11 @@ cards.cards.races = {
 	Race { name = "Dwarf";
 		desc = "You can carry any number of Big items. You can have 6 cards in your hand.";
 		deck_count = 3;
-		play = function(self, game, player, args)
+		play = function(self, game, player)
 			player.max_big_items = 1000; -- arbitrarily large number since we don't have inf
 			player.max_in_play = 6;
 		end;
-		discard = function(self, game, player, args)
+		discard = function(self, game, player)
 			player.max_big_items = nil;
 			player.max_in_play = nil;
 		end;
@@ -142,10 +142,10 @@ cards.cards.races = {
 	Race { name = "Elf";
 		desc = "+1 to Run Away. You go up 1 Level for every monster you help someone else kill.";
 		deck_count = 3;
-		bonus_run_away = function(self, game, player, args)
+		bonus_run_away = function(self, game, player)
 			return 1;
 		end;
-		on_victory = function(self, game, player, args)
+		on_victory = function(self, game, player)
 			if game.active_player ~= player then
 				player:give_levels(1);
 			end
@@ -155,10 +155,10 @@ cards.cards.races = {
 	Race { name = "Half-Breed";
 		desc = "You may have two race cards, and have all of the advantages and disadvantages of each. Or you may have one race card and have all of its advantages and none of its disadvantages (for example, monsters that hate Elves will have no bonus against a Half-Elf). Lose this card if you lose all your race card(s).";
 		deck_count = 2;
-		play = function(self, game, player, args)
+		play = function(self, game, player)
 			player.allow_second_race = true;
 		end;
-		discard = function(self, game, player, args)
+		discard = function(self, game, player)
 			player.allow_second_race = nil;
 		end;
 	};
@@ -166,16 +166,16 @@ cards.cards.races = {
 	Race { name = "Halfling";
 		desc = "You may sell one Item each turn for double the price (other Items are at normal price). If you fail your initial Run Away roll, you may discard a card and try once more.";
 		deck_count = 3;
-		can_use = function(self, game, player, args)
-			return player.run_away_attempts == 1 and (#player.in_hand > 0 or #player.in_play > 0);
+		can_use = function(self, game, player)
+			return player.run_away_attempts == 1 and player:has_discardables(game);
 		end;
-		play = function(self, game, player, card, args)
+		play = function(self, game, player, card)
 			player.double_first_sell = true;
 		end;
-		discard = function(self, game, player, args)
+		discard = function(self, game, player)
 			player.double_first_sell = nil;
 		end;
-		use = function(self, game, player, args)
+		use = function(self, game, player)
 			player.max_run_away_attempts = player.max_run_away_attempts + 1;
 		end;
 	};
@@ -194,8 +194,8 @@ local Class = {
 	group = "door";
 	abilities = {};
 	
-	can_play = function(game, player, args)
-		return game.active_player == player;
+	can_play = function(game, player)
+		return game.active_player == player and not player.class or (player.allow_second_class and not player.class2);
 	end
 }
 Class.__index = Class;
@@ -209,7 +209,7 @@ cards.cards.classes = {
 			{
 				name = "Resurrection";
 				desc = "When it is time for you to draw cards face-up, you may instead take some or all from the top of the appropriate discard pile. You must then discard one card from your hand for each card drawn.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					if game.active_player == player then
 						if game.phase == "pre_door" then
 							if #game.door_discard > 0 then
@@ -223,7 +223,7 @@ cards.cards.classes = {
 					end
 					return false;
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local drawn = {};
 					if game.phase == "pre_door" then
 						drawn = player:draw_cards(game.door_discard, true, 1, #game.door_discard);
@@ -245,7 +245,7 @@ cards.cards.classes = {
 			{
 				name = "Turning";
 				desc = "You may discard up to 3 cards in combat against an Undead creature. Each discard gives you a +3 bonus.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					if player.in_combat and player:has_discardables(game) then
 						for monster in game.field.monsters do
 							if monster:has_property("undead") then
@@ -255,7 +255,7 @@ cards.cards.classes = {
 					end
 					return false;
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local discardables = player:get_discardables(game);
 					local discards = player:select_targets(discardables, true, 1, 3);
 					if #discards > 0 then
@@ -273,13 +273,13 @@ cards.cards.classes = {
 	Class { name = "Super Munchkin";
 		desc = "You may have two Class cards, and have all of the advantages and disadvantages of each. Or you may have one Class card and have all of its advantages and none of its disadvantages (for example, monsters that hate Clerics will have no bonus against a Super Cleric). Lose this card if you lose all your Class card(s).";
 		deck_count = 2;
-		can_play = function(self, game, player, args)
+		can_play = function(self, game, player)
 			return not player.allow_second_class;
 		end;
-		play = function(self, game, player, args)
+		play = function(self, game, player)
 			player.allow_second_class = true;
 		end;
-		discard = function(self, game, player, args)
+		discard = function(self, game, player)
 			player.allow_second_class = nil;
 		end;
 	};
@@ -290,7 +290,7 @@ cards.cards.classes = {
 			{
 				name = "Backstabbing";
 				desc = "You may discard a card to backstab another player (-2 in combat). You may do this only once per victim per combat, but if two players are fighting a monster together, you may backstab each of them.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					if game.phase == "combat" and player:has_discardables(game) then
 						for combatant in game.field.players do
 							if not combatant.backstabbed then
@@ -300,7 +300,7 @@ cards.cards.classes = {
 					end
 					return false;
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local discardables = player:get_discardables(game);
 					::redo_backstabbing_discard_selection::
 					local discards = player:select_targets(discardables, true, 1, #game.field.players);
@@ -324,7 +324,7 @@ cards.cards.classes = {
 			{
 				name = "Theft";
 				desc = "You may discard a card to try to steal a small Item carried by another player. Roll a die; 4 or more succeeds. Otherwise, you get whacked and lose a level.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					if not player.in_combat and player:has_discardables(game) then
 						for _,noncombatant in pairs(game.players) do
 							if noncombatant ~= player and not noncombatant.in_combat and noncombatant:find_inplay_item(function(card) return not card.big; end) then
@@ -334,7 +334,7 @@ cards.cards.classes = {
 					end
 					return false;
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local discardables = player:get_discardables(game);
 					::redo_theft_discard_selection::
 					local discards = player:select_targets(discardables, true, 1, 1);
@@ -364,20 +364,20 @@ cards.cards.classes = {
 	
 	Class { name = "Warrior";
 		deck_count = 3;
-		play = function(self, game, player, args)
+		play = function(self, game, player)
 			player.wins_combat_ties = true;
 		end;
-		discard = function(self, game, player, args)
+		discard = function(self, game, player)
 			player.wins_combat_ties = nil;
 		end;
 		abilities = {
 			{
 				name = "Berserking";
 				desc = "You may discard up to 3 cards in combat; each one gives you a +1 bonus. You win ties in combat.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					return player.in_combat and player:has_discardables(game);
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local discardables = player:get_discardables(game);
 					local discards = player:select_targets(discardables, true, 1, 3);
 					if #discards > 0 then
@@ -398,10 +398,10 @@ cards.cards.classes = {
 			{
 				name = "Flight Spell";
 				desc = "You may discard up to three cards after rolling the die to Run Away; each one gives you a +1 bonus to flee.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					return game.phase == "run_away" and player.in_combat and player:has_discardables(game);
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local discardables = player:get_discardables(game);
 					local discards = player:select_targets(discardables, true, 1, 3);
 					if #discards > 0 then
@@ -416,10 +416,10 @@ cards.cards.classes = {
 			{
 				name = "Charm Spell";
 				desc = "You may discard your whole hand (minimum 3 cards) to charm a single Monster instead of fighting it. Discard the Monster and take its Treasure, but don't gain levels. If there are other monsters in the combat, fight them normally.";
-				can_use = function(self, game, player, args)
+				can_use = function(self, game, player)
 					return player.in_combat and #player.in_hand >= 3;
 				end;
-				use = function(self, game, player, args)
+				use = function(self, game, player)
 					local monsters = player:select_targets(game.field.monsters, true, 1, 1);
 					if #monsters > 0 then
 						player.charm_spell_used = true;
@@ -428,7 +428,7 @@ cards.cards.classes = {
 							player:discard_inhand_card(game, card);
 						end
 						
-						local treasures = monster:treasures(game, player, args);
+						local treasures = monster:treasures(game, player);
 						player:draw_cards(game.treasure_deck, false, treasures, treasures);
 						
 						local monster_field_idx = cards.find_card(game.field.monsters, monster);
@@ -454,13 +454,13 @@ local Monster = {
 	group = "door";
 	good = "** missing Good Stuff text **"; -- TODO(sushi) remove and use formatting inside of desc to do this instead
 	bad  = "** missing Bad Stuff text **";  -- TODO(sushi) remove and use formatting inside of desc to do this instead
-	strength = function(self, game, player, args) return 1; end;
-	treasures = function(self, game, player, args) return 1; end;
-	levels = function(self, game, player, args) return 1; end;
+	strength = function(self, game, player) return 1; end;
+	treasures = function(self, game, player) return 1; end;
+	levels = function(self, game, player) return 1; end;
 	
-	on_victory = function(self, game, player, args)
-		player:draw_treasures(self:treasures(game, player, args));
-		player:gain_levels(self:levels(game, player, args));
+	on_victory = function(self, game, player)
+		player:draw_treasures(self:treasures(game, player));
+		player:gain_levels(self:levels(game, player));
 	end;
 }
 Monster.__index = Monster;
@@ -471,21 +471,18 @@ cards.cards.monsters = {
 	Monster { name = "3,872 Orcs";
 		good = "If this enemy is defeated, the Player gains 1 level and 3 treasures.";
 		bad  = "Due to ancient grudges, the 3,872 Orcs are level 16 (+6) against Dwarves. If this enemy is victorious, the Player must roll a die. On a 1 or 2, the 3,872 Orcs stomp the Player to death. On a 3 or higher, the Player loses however many Levels the die shows.";
-		strength = function(self, game, player, args)
-			if player.race == "dwarf" then
-				return 16;
-			end
-			for _,helper in pairs(args.helpers) do
-				if helper.race == "dwarf" then
+		strength = function(self, game, player)
+			for _,combatant in pairs(game.field.players) do
+				if combatant.race == "dwarf" then
 					return 16;
 				end
 			end
 			return 10;
 		end;
-		treasures = function(self, game, player, args)
+		treasures = function(self, game, player)
 			return 3;
 		end;
-		on_defeat = function(self, game, player, args)
+		on_defeat = function(self, game, player)
 			for combatant in game.field.players do
 				local roll = combatant:roll_die();
 				if roll <= 2 then
@@ -500,13 +497,13 @@ cards.cards.monsters = {
 	Monster { name = "Amazon";
 		good = "The Amazon does not attack female Players. Instead, she gives them 1 Treasure. If this enemy is defeated, the Player gains 1 Level and 2 Treasures.";
 		bad = "If this enemy is victorious, the male Player has been defeated by a woman, therefore losing his macho munchkin pride. The Player also loses his Class(es). However, if the Player has no Class, he loses 3 Levels instead.";
-		strength = function(self, game, player, args)
+		strength = function(self, game, player)
 			return 8;
 		end;
-		treasures = function(self, game, player, args)
+		treasures = function(self, game, player)
 			return 2;
 		end;
-		on_play = function(self, game, player, args)
+		on_play = function(self, game, player)
 			if player.gender == "female" then
 				player:draw_cards(game.treasure_deck, false, 1, 1);
 				return false;
@@ -514,7 +511,7 @@ cards.cards.monsters = {
 				return true;
 			end
 		end;
-		on_defeat = function(self, game, player, args)
+		on_defeat = function(self, game, player)
 			for combatant in game.field.players do
 				if combatant.class then
 					combatant.class = nil;
@@ -624,10 +621,10 @@ local GOAL = {
 	group = "treasure";
 	desc = "";
 	
-	can_play = function(self, game, player, args)
+	can_play = function(self, game, player)
 		return player.level < 9;
 	end;
-	play = function(self, game, player, args)
+	play = function(self, game, player)
 		player:give_level(1);
 		player:discard_inhand_card(game, self);
 	end;
@@ -650,7 +647,7 @@ cards.cards.goals = {
 	
 	GOAL { name = "Kill the Hireling";
 		desc = "You can use this card only if a Hireling is in play (no matter who owns him). Discard the Hireling.";
-		can_play = function(self, game, player, args)
+		can_play = function(self, game, player)
 			if player.level < 9 then
 				for _,p in pairs(game.players) do
 					for _,card in pairs(p.in_play) do
@@ -662,7 +659,7 @@ cards.cards.goals = {
 			end
 			return false;
 		end;
-		play = function(self, game, player, args)
+		play = function(self, game, player)
 			::redo_hireling_player_selection::
 			local players = player:select_targets(game.players, true, 1, 1);
 			if #players > 0 then
@@ -680,7 +677,7 @@ cards.cards.goals = {
 	
 	GOAL { name = "Mutilate the Bodies";
 		desc = "This card can be played only after combat, but it does not have to be your combat.";
-		can_play = function(self, game, player, args)
+		can_play = function(self, game, player)
 			return game.phase == "run_away" or game.phase == "defeat" or game.phase == "victory_solo" or game.phase == "victory_shared";
 		end;
 	};
@@ -689,7 +686,7 @@ cards.cards.goals = {
 	
 	GOAL { name = "Whine at the GM";
 		desc = "YOu can't use this if you are currently the highest-Level player, or tied for highest.";
-		can_play = function(self, game, player, args)
+		can_play = function(self, game, player)
 			return game.phase == "run_away" or game.phase == "defeat" or game.phase == "victory_solo" or game.phase == "victory_shared";
 		end;
 	};
@@ -712,6 +709,19 @@ setmetatable(Curse, Card);
 Curse.new = function(_, tbl) local o = {}; for k,v in pairs(tbl) do o[k] = v; end setmetatable(o, Curse); return o; end
 
 cards.cards.curses = {
+	Curse { name = "Curse! Change Class";
+		desc = "If you have no Class now, this curse has no effect. Otherwise, go back through the discard pile, starting with the top discard. The first Class card you come to replaces your current Class(es). If you go through the discards without finding a Class card, you just lose your own Class(es).";
+		play = function(self, game, player)
+			if player.class then
+				
+				
+				class_card = card.move_last_card(src, dst, function(card) return card.kind == "class"; end);
+			end
+		end;
+	};
+	
+	
+	
 	-- TODO curses
 };
 
@@ -725,13 +735,13 @@ cards.cards.curses = {
 
 -- plays the card on the target from the players hand
 -- returns false if the given card cannot be played
-Player.play_card = function(self, game, card, target)
-	if not card:can_play(game, self, target) then
-		return false;
+Player.play_card = function(self, game, card)
+	if card:can_play(game, self) then
+		card:play(game, self);
+		cards.move_card(self.in_hand, self.in_play, card);
+		return true;
 	end
-	
-	card:play(game, self, target);
-	cards.move_card(self.in_hand, self.in_play, card);
+	return false;
 end
 
 -- returns true if the card was discarded
@@ -895,7 +905,18 @@ cards.find_first_card = function(tbl, filter)
 	return nil;
 end
 
--- returns and removes card from the tbl
+-- returns the index of the last card in the tbl that passes the filter function
+cards.find_last_card = function(tbl, filter)
+	tbl_size = #tbl;
+	for idx=1, tbl_size do
+		if filter(tbl[tbl_size-idx+1]) then
+			return idx;
+		end
+	end
+	return nil;
+end
+
+-- removes and returns card from the tbl
 cards.remove_card = function(tbl, card)
 	idx = cards.find_card(tbl, card);
 	if idx then
@@ -904,7 +925,7 @@ cards.remove_card = function(tbl, card)
 	return nil;
 end
 
--- returns and removes the first card in the tbl that passes the filter function
+-- removes and returns the first card in the tbl that passes the filter function
 cards.remove_first_card = function(tbl, filter)
 	idx = cards.find_first_card(tbl, filter);
 	if idx then
@@ -913,22 +934,40 @@ cards.remove_first_card = function(tbl, filter)
 	return nil;
 end
 
--- moves card from the src_tbl to the dst_tbl
+-- removes and returns the last card in the tbl that passes the filter function
+cards.remove_first_card = function(tbl, filter)
+	idx = cards.find_last_card(tbl, filter);
+	if idx then
+		return table.remove(tbl, idx);
+	end
+	return nil;
+end
+
+-- moves and returns card from the src_tbl to the dst_tbl
 cards.move_card = function(src_tbl, dst_tbl, card)
 	removed_card = cards.remove_card(src_tbl, card);
 	if removed_card then
 		table.insert(dst_tbl, removed_card);
 	end
-	return removed_card ~= nil;
+	return removed_card;
 end
 
--- moves the first card in the src_tbl that passes the filter function to the dst_tbl
+-- moves and returns the first card in the src_tbl that passes the filter function to the dst_tbl
 cards.move_first_card = function(src_tbl, dst_tbl, filter)
 	removed_card = cards.remove_first_card(src_tbl, filter);
 	if removed_card then
 		table.insert(dst_tbl, removed_card);
 	end
-	return removed_card ~= nil;
+	return removed_card;
+end
+
+-- moves and returns the last card in the src_tbl that passes the filter function to the dst_tbl
+cards.move_last_card = function(src_tbl, dst_tbl, filter)
+	removed_card = cards.remove_first_card(src_tbl, filter);
+	if removed_card then
+		table.insert(dst_tbl, removed_card);
+	end
+	return removed_card;
 end
 
 -- returns true if the card was discarded
